@@ -12,13 +12,30 @@ let reader;
 let file;
 let datasets = [];
 let selection = 0;
+let reading = false;
+const MAX_FILE_BYTES = 268435456;
+
+function cut(text, length) {
+  const last = text.charCodeAt(length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) length -= 1;
+  return text.slice(0, length);
+}
 
 function format(value) {
-  return JSON.stringify(value, (_, entry) => {
-    if (ArrayBuffer.isView(entry)) return Array.from(entry);
+  let entries = 0;
+  const text = JSON.stringify(value, (_, entry) => {
+    if (++entries > 2048) return 'truncated';
+    if (ArrayBuffer.isView(entry)) {
+      return { values: Array.from(entry.subarray(0, 64)), length: entry.length, truncated: entry.length > 64 };
+    }
+    if (Array.isArray(entry) && entry.length > 64) {
+      return { values: entry.slice(0, 64), length: entry.length, truncated: true };
+    }
+    if (typeof entry === 'string' && entry.length > 1024) return `${cut(entry, 1024)} (truncated)`;
     if (typeof entry === 'bigint') return entry.toString();
     return entry;
   }, 2);
+  return text.length > 65536 ? `${cut(text, 65536)}\ntruncated` : text;
 }
 
 function showDataset() {
@@ -33,7 +50,7 @@ function showDataset() {
   }
   try {
     const values = file.read(index);
-    const fill = file.attributes(index).find(attribute => attribute.name === '_FillValue')?.value[0];
+    const fill = dataset.attributes.find(attribute => attribute.name === '_FillValue')?.value[0];
     const image = greyscale(values, dataset.shape, fill);
     if (image.count === 0) {
       previewStatus.textContent = 'This dataset has no finite, non-fill values to preview.';
@@ -66,10 +83,17 @@ function clearFile() {
 }
 
 async function openFile(source) {
+  if (reading) {
+    status.textContent = 'A file read is already in progress. Wait until it finishes.';
+    return;
+  }
+  reading = true;
+  picker.disabled = true;
   const current = ++selection;
   clearFile();
   status.textContent = `Reading ${source.name}.`;
   try {
+    if (source.size > MAX_FILE_BYTES) throw new Error(`File exceeds the ${MAX_FILE_BYTES} byte browser limit.`);
     const bytes = new Uint8Array(await source.arrayBuffer());
     if (current !== selection) return;
     file = reader.File.fromBytes(bytes);
@@ -93,6 +117,9 @@ async function openFile(source) {
     if (current !== selection) return;
     clearFile();
     status.textContent = `Cannot open ${source.name}: ${error.message}`;
+  } finally {
+    reading = false;
+    picker.disabled = false;
   }
 }
 
@@ -105,6 +132,10 @@ choices.addEventListener('change', showDataset);
 document.addEventListener('dragover', event => event.preventDefault());
 document.addEventListener('drop', event => {
   event.preventDefault();
+  if (reading) {
+    status.textContent = 'A file read is already in progress. Wait until it finishes.';
+    return;
+  }
   if (picker.disabled) return;
   const sources = event.dataTransfer.files;
   if (sources.length !== 1) {

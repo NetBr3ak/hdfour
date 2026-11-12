@@ -5,9 +5,7 @@ use hdfour::{Codec, Error, File, Limits, Memory, Result, codec, eos, odl};
 
 const ARRAY_BYTES: u64 = 1_048_576;
 
-/// Open metadata and attempt every small dataset, retaining neither arrays nor errors.
-/// Format, unsupported-feature and limit errors are expected outcomes under mutation.
-pub fn open_read_all(bytes: &[u8]) -> Result<usize> {
+fn open(bytes: &[u8]) -> Result<File> {
     let limits = Limits {
         max_descriptors: 4096,
         max_dd_blocks: 128,
@@ -20,22 +18,40 @@ pub fn open_read_all(bytes: &[u8]) -> Result<usize> {
         max_chunk_header_bytes: 256,
     };
     let owned = bytes.to_vec();
-    let file = File::from_source(Memory::new(owned), limits)?;
+    File::from_source(Memory::new(owned), limits)
+}
+
+/// Attempt every read; mutations may legitimately make individual reads fail.
+pub fn open_read_all(bytes: &[u8]) -> Result<usize> {
+    let file = open(bytes)?;
     for dataset in file.datasets() {
-        let length = dataset.shape.iter().try_fold(
-            u64::try_from(dataset.dtype.size()).map_err(|_| malformed())?,
-            |length, size| length.checked_mul(*size).ok_or_else(malformed),
-        )?;
-        if length > ARRAY_BYTES {
-            return Err(Error::LimitExceeded {
-                limit: "fuzz array bytes",
-                value: length,
-                max: ARRAY_BYTES,
-            });
-        }
-        let _ = std::hint::black_box(file.read(dataset));
+        let _ = std::hint::black_box(read(&file, dataset));
     }
     Ok(file.datasets().len())
+}
+
+/// Check a known fixture, propagating every read error to the contract test.
+pub fn read_fixture(bytes: &[u8]) -> Result<usize> {
+    let file = open(bytes)?;
+    for dataset in file.datasets() {
+        std::hint::black_box(read(&file, dataset)?);
+    }
+    Ok(file.datasets().len())
+}
+
+fn read(file: &File, dataset: &hdfour::Dataset) -> Result<hdfour::Array> {
+    let length = dataset.shape.iter().try_fold(
+        u64::try_from(dataset.dtype.size()).map_err(|_| malformed())?,
+        |length, size| length.checked_mul(*size).ok_or_else(malformed),
+    )?;
+    if length > ARRAY_BYTES {
+        return Err(Error::LimitExceeded {
+            limit: "fuzz array bytes",
+            value: length,
+            max: ARRAY_BYTES,
+        });
+    }
+    file.read(dataset)
 }
 
 /// The first two bytes declare the output length in little-endian order.

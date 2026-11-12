@@ -143,6 +143,7 @@ def test_diff_dataset(path, index, expectation):
             return
         values = actual.read()
         assert values.dtype == np.dtype(DTYPES[dtype & ~0x4000])
+        assert values.shape == tuple(shape)
         try:
             expected_values = reference.get()
         except (HDF4Error, ValueError) as error:
@@ -151,8 +152,12 @@ def test_diff_dataset(path, index, expectation):
             # Any other pyhdf failure is unexplained and must fail here.
             if "cannot currently deal with the SDS data type" in str(error):
                 pytest.skip(f"pyhdf cannot read this number type: {error}")
-            if values.size == 0:
-                return
+            if (
+                values.size == 0
+                and isinstance(error, ValueError)
+                and str(error) == "SDreaddata failure"
+            ):
+                pytest.skip(f"pyhdf cannot read an empty dataset: {error}")
             raise
         if dtype & ~0x4000 == SDC.CHAR8:
             expected_values = np.asarray(expected_values).view(np.int8)

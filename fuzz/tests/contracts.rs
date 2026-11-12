@@ -1,10 +1,10 @@
 use hdfour::{Codec, Error};
-use hdfour_fuzz::{decode, open_read_all, parse_odl};
+use hdfour_fuzz::{decode, open_read_all, parse_odl, read_fixture};
 
 #[test]
 fn valid_fixture_reaches_every_dataset() {
     let bytes = include_bytes!("../../fixtures/F01.hdf");
-    assert_eq!(open_read_all(bytes).unwrap(), 10);
+    assert_eq!(read_fixture(bytes).unwrap(), 10);
 }
 
 #[test]
@@ -32,4 +32,16 @@ fn utf8_and_structural_metadata_reach_the_parser() {
     assert!(parse_odl(b"END").is_ok());
     assert!(parse_odl(&[0xff]).is_err());
     assert!(parse_odl(include_bytes!("../../fixtures/odl/grid.odl")).is_ok());
+}
+
+#[test]
+fn fixture_reads_propagate_errors() {
+    let bytes = include_bytes!("../../fixtures/F10.hdf");
+    assert!(matches!(
+        read_fixture(bytes),
+        Err(Error::Unsupported {
+            feature: "skipping-huffman",
+            ..
+        })
+    ));
 }

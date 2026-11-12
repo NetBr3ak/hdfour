@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import init, { File } from './pkg/hdfour_wasm.js';
 import './preview.test.mjs';
 
-await init({ module_or_path: await readFile(new URL('./pkg/hdfour_wasm_bg.wasm', import.meta.url)) });
+const wasm = await init({ module_or_path: await readFile(new URL('./pkg/hdfour_wasm_bg.wasm', import.meta.url)) });
 const fixtures = new URL('../fixtures/', import.meta.url);
 const constructors = [Int8Array, Uint8Array, Int16Array, Uint16Array, Int32Array,
   Uint32Array, Float32Array, Float64Array, Int8Array, Uint8Array];
@@ -43,9 +43,12 @@ test('F01: metadata and every typed array match the C golden bytes', async () =>
       assert.equal(file.read(index)[0], first, 'results do not alias file storage');
     }
     const retained = file.read(0);
+    const retainedBytes = Buffer.from(retained.buffer, retained.byteOffset, retained.byteLength);
+    const expectedRetained = await readFile(new URL('golden/F01/0.bin', fixtures));
+    assert.notEqual(retained.buffer, wasm.memory.buffer, 'results own their buffer');
     file.free();
     freed = true;
-    assert.equal(retained.length, 15, 'results survive free()');
+    assert.deepEqual(retainedBytes, expectedRetained, 'results survive free()');
     assert.throws(() => file.datasets());
   } finally {
     if (!freed) file.free();
