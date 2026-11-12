@@ -1,0 +1,22 @@
+GROUP=SwathStructure
+END_GROUP=SwathStructure
+GROUP=GridStructure
+END_GROUP=GridStructure
+GROUP=PointStructure
+  GROUP=POINT_1
+    PointName="Stations"
+    GROUP=Level
+      GROUP=Level_0
+        LevelName="Observations"
+        OBJECT=PointField_1
+          PointFieldName="Temperature"
+          DataType=DFNT_FLOAT32
+          Order=1
+        END_OBJECT=PointField_1
+      END_GROUP=Level_0
+    END_GROUP=Level
+    GROUP=LevelLink
+    END_GROUP=LevelLink
+  END_GROUP=POINT_1
+END_GROUP=PointStructure
+END
