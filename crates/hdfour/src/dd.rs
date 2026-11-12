@@ -34,6 +34,9 @@ impl Descriptor {
 pub struct Index {
     descriptors: BTreeMap<(u16, u16), Descriptor>,
     limits: Limits,
+    metadata: crate::metadata::Budget,
+    // Bound live parser caches separately from the returned metadata.
+    parser_metadata: crate::metadata::Budget,
 }
 
 impl Index {
@@ -45,6 +48,14 @@ impl Index {
     /// Visit descriptors in base-tag, reference order, excluding null slots.
     pub fn iter(&self) -> impl Iterator<Item = &Descriptor> {
         self.descriptors.values()
+    }
+
+    pub(crate) fn metadata(&self) -> &crate::metadata::Budget {
+        &self.metadata
+    }
+
+    pub(crate) fn parser_metadata(&self) -> &crate::metadata::Budget {
+        &self.parser_metadata
     }
 
     pub(crate) fn limits(&self) -> &Limits {
@@ -65,6 +76,8 @@ pub fn parse(source: &dyn Source, limits: &Limits) -> Result<Index> {
     let mut index = Index {
         descriptors: BTreeMap::new(),
         limits: limits.clone(),
+        metadata: crate::metadata::Budget::new(limits.max_metadata_bytes),
+        parser_metadata: crate::metadata::Budget::new(limits.max_metadata_bytes),
     };
     let mut visited = BTreeSet::new();
     let mut offset = 4;
@@ -90,11 +103,7 @@ pub fn parse(source: &dyn Source, limits: &Limits) -> Result<Index> {
             .checked_add(6)
             .ok_or_else(|| malformed(offset, "DD block offset overflow"))?;
         check_range(source, records_offset, byte_count)?;
-        let mut records = vec![
-            0;
-            usize::try_from(byte_count)
-                .map_err(|_| malformed(offset, "DD block is too large"))?
-        ];
+        let mut records = crate::read::buffer(crate::read::allocation_size(byte_count)?)?;
         read_at(source, records_offset, &mut records)?;
         for bytes in records.chunks_exact(12) {
             let descriptor = parse_descriptor(bytes)?;
@@ -111,6 +120,7 @@ pub fn parse(source: &dyn Source, limits: &Limits) -> Result<Index> {
                 check_range(source, data_offset, descriptor.length)?;
             }
             let key = (base_tag(descriptor.tag), descriptor.reference);
+            index.metadata.items::<((u16, u16), Descriptor)>(1)?;
             if index.descriptors.insert(key, descriptor).is_some() {
                 return Err(malformed(
                     records_offset,

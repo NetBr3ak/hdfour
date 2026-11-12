@@ -10,6 +10,7 @@ pub mod element;
 pub mod eos;
 pub mod error;
 pub mod limits;
+mod metadata;
 pub mod nt;
 pub mod odl;
 pub mod read;

@@ -243,18 +243,106 @@ fn from_bytes_matches_path_metadata_and_values() {
 #[test]
 fn opening_does_not_read_array_payloads() {
     use hdfour::{Limits, Memory, dd};
-    let bytes = std::fs::read(root().join("fixtures/F01.hdf")).expect("fixture");
-    let source = Memory::new(bytes);
-    let index = dd::parse(&source, &Limits::default()).expect("index");
-    let descriptor = index.iter().find(|dd| dd.tag == 702).expect("SD");
-    let start = descriptor.offset.expect("written");
-    let (source, read_data) = watch_reads(source, start..start + descriptor.length);
-    let file = File::from_source(source, Limits::default()).expect("metadata only");
-    assert!(!read_data.load(Ordering::SeqCst));
-    for dataset in file.datasets() {
-        file.read(dataset).expect("values");
+    for id in ["F01", "F05", "F06", "F07", "F08"] {
+        let source =
+            Memory::new(std::fs::read(root().join(format!("fixtures/{id}.hdf"))).expect("fixture"));
+        let index = dd::parse(&source, &Limits::default()).expect("index");
+        let mut ranges = Vec::new();
+        for descriptor in index
+            .iter()
+            .filter(|dd| matches!(dd.tag & 0x3fff, 702 | 40 | 61))
+        {
+            payload_ranges(&source, &index, descriptor, &mut ranges);
+        }
+        assert!(!ranges.is_empty(), "{id}: payload coverage");
+        let reads: Arc<Vec<AtomicBool>> =
+            Arc::new(ranges.iter().map(|_| AtomicBool::new(false)).collect());
+        let source = PayloadWatch {
+            source,
+            ranges,
+            reads: reads.clone(),
+        };
+        let file = File::from_source(source, Limits::default()).expect("metadata only");
+        let covered = file.datasets().iter().any(|dataset| match id {
+            "F01" => dataset.storage == hdfour::Storage::Contiguous,
+            "F05" => dataset.storage == hdfour::Storage::Linked,
+            "F06" => dataset.codec == hdfour::Codec::Deflate,
+            "F07" | "F08" => matches!(dataset.storage, hdfour::Storage::Chunked { .. }),
+            _ => false,
+        });
+        assert!(covered, "{id}: required storage layout");
+        assert!(
+            reads.iter().all(|read| !read.load(Ordering::SeqCst)),
+            "{id}: payload read during open"
+        );
+        for dataset in file.datasets() {
+            file.read(dataset).expect("values");
+        }
+        assert!(
+            reads.iter().all(|read| read.load(Ordering::SeqCst)),
+            "{id}: watched payload was not exercised"
+        );
     }
-    assert!(read_data.load(Ordering::SeqCst));
+}
+
+fn payload_ranges(
+    source: &dyn hdfour::Source,
+    index: &hdfour::dd::Index,
+    descriptor: &hdfour::dd::Descriptor,
+    ranges: &mut Vec<std::ops::Range<u64>>,
+) {
+    let Some(start) = descriptor.offset else {
+        return;
+    };
+    if !descriptor.is_special() {
+        if descriptor.length != 0 {
+            ranges.push(start..start + descriptor.length);
+        }
+        return;
+    }
+    let mut bytes = vec![0; descriptor.length as usize];
+    source.read_at(start, &mut bytes).expect("special header");
+    if let hdfour::special::Special::Linked(header) =
+        hdfour::special::parse(&bytes, &hdfour::Limits::default()).expect("storage")
+    {
+        let mut reference = header.link_ref;
+        let mut visited = std::collections::BTreeSet::new();
+        while reference != 0 {
+            assert!(visited.insert(reference), "linked cycle");
+            let table = index.get(20, reference).expect("link table");
+            let mut bytes = vec![0; 2 + 2 * header.number_blocks as usize];
+            source
+                .read_at(table.offset.expect("table offset"), &mut bytes)
+                .expect("table");
+            reference = u16::from_be_bytes(bytes[..2].try_into().expect("next"));
+            for entry in bytes[2..].chunks_exact(2) {
+                let block = u16::from_be_bytes(entry.try_into().expect("reference"));
+                if block != 0 {
+                    payload_ranges(source, index, index.get(20, block).expect("block"), ranges);
+                }
+            }
+        }
+    }
+}
+
+struct PayloadWatch {
+    source: hdfour::Memory<Vec<u8>>,
+    ranges: Vec<std::ops::Range<u64>>,
+    reads: Arc<Vec<AtomicBool>>,
+}
+
+impl hdfour::Source for PayloadWatch {
+    fn len(&self) -> u64 {
+        self.source.len()
+    }
+    fn read_at(&self, offset: u64, bytes: &mut [u8]) -> hdfour::Result<()> {
+        for (range, read) in self.ranges.iter().zip(self.reads.iter()) {
+            if offset < range.end && offset + bytes.len() as u64 > range.start {
+                read.store(true, Ordering::SeqCst);
+            }
+        }
+        self.source.read_at(offset, bytes)
+    }
 }
 
 #[test]
@@ -590,7 +678,7 @@ proptest::proptest! {
     fn arbitrary_file_bytes_never_panic(bytes in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..4096)) {
         let limits = hdfour::Limits {
             max_descriptors: 128, max_dd_blocks: 16, max_group_depth: 8, max_rank: 4,
-            max_array_bytes: 65536, max_attribute_bytes: 4096, max_chunks: 64,
+            max_array_bytes: 65536, max_attribute_bytes: 4096, max_metadata_bytes: 65536, max_chunks: 64,
             max_chunk_header_bytes: 256,
         };
         if let Ok(file) = File::from_source(hdfour::Memory::new(bytes), limits) {
@@ -600,7 +688,7 @@ proptest::proptest! {
 }
 
 #[test]
-fn zero_chunk_tags_use_header_fill_not_the_dataset_attribute() {
+fn zero_chunk_tags_are_malformed() {
     use hdfour::{Limits, Memory, dd, element, vset};
     let mut bytes = std::fs::read(root().join("fixtures/F07.hdf")).expect("F07");
     let (descriptor, header) = vdata_named(&bytes, "_HDF_CHK_TBL_702_3_1962_4");
@@ -638,7 +726,13 @@ fn zero_chunk_tags_use_header_fill_not_the_dataset_attribute() {
             .offset,
     );
     records[tag_offset..tag_offset + 2].copy_from_slice(&0_u16.to_be_bytes());
-    records[ref_offset..ref_offset + 2].copy_from_slice(&u16::MAX.to_be_bytes());
+    let chunk_reference = u16::from_be_bytes(
+        records[ref_offset..ref_offset + 2]
+            .try_into()
+            .expect("chunk reference"),
+    );
+    let chunk_slot = descriptor_slot(&bytes, (61, chunk_reference));
+    bytes[chunk_slot..chunk_slot + 2].copy_from_slice(&0_u16.to_be_bytes());
     let slot = descriptor_slot(&bytes, (storage.tag, storage.reference));
     let offset = u32::try_from(bytes.len()).expect("offset");
     bytes.extend(&records);
@@ -658,20 +752,10 @@ fn zero_chunk_tags_use_header_fill_not_the_dataset_attribute() {
     .expect("offset");
     bytes[fill_offset..fill_offset + 2].copy_from_slice(&0x1234_i16.to_be_bytes());
     let file = File::from_bytes(bytes).expect("zero chunk tag");
-    let Value::I16(actual) = file.read(&file.datasets()[0]).expect("sparse values").data else {
-        panic!("i16 values")
-    };
-    let mut expected: Vec<_> = std::fs::read(root().join("fixtures/golden/F07/0.bin"))
-        .expect("golden bytes")
-        .chunks_exact(2)
-        .map(|bytes| i16::from_le_bytes(bytes.try_into().expect("i16")))
-        .collect();
-    for row in 0..2 {
-        for column in 0..3 {
-            expected[row * 7 + column] = -12345;
-        }
-    }
-    assert_eq!(actual, expected);
+    assert!(matches!(
+        file.read(&file.datasets()[0]),
+        Err(hdfour::Error::Malformed { .. })
+    ));
 }
 
 proptest::proptest! {
@@ -688,7 +772,7 @@ proptest::proptest! {
         bytes[position] = byte;
         let limits = hdfour::Limits {
             max_descriptors: 512, max_dd_blocks: 16, max_group_depth: 8, max_rank: 4,
-            max_array_bytes: 65536, max_attribute_bytes: 4096, max_chunks: 64,
+            max_array_bytes: 65536, max_attribute_bytes: 4096, max_metadata_bytes: 65536, max_chunks: 64,
             max_chunk_header_bytes: 256,
         };
         if let Ok(file) = File::from_source(hdfour::Memory::new(bytes), limits) {

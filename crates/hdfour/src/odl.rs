@@ -8,6 +8,7 @@
     clippy::panic
 )]
 
+use crate::metadata::Budget;
 use crate::{Error, Limits, Result};
 
 /// An ODL document or block, with entries in source order.
@@ -44,18 +45,29 @@ pub enum Value {
 /// Parse structural ODL with the file's combined group, object and list depth limit.
 /// Error offsets are UTF-8 byte positions in the metadata text.
 pub fn parse(text: &str, limits: &Limits) -> Result<Odl> {
+    parse_with_budget(text, limits, &Budget::new(limits.max_metadata_bytes))
+}
+
+pub(crate) fn parse_with_budget(text: &str, limits: &Limits, budget: &Budget) -> Result<Odl> {
+    #[cfg(test)]
+    PARSE_CALLS.with(|count| count.set(count.get().saturating_add(1)));
     Parser {
         text: text.trim_end_matches('\0'),
         offset: 0,
         max_depth: limits.max_group_depth,
+        budget,
     }
     .body(None, 0)
 }
+
+#[cfg(test)]
+std::thread_local! { pub(crate) static PARSE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 
 struct Parser<'a> {
     text: &'a str,
     offset: usize,
     max_depth: u64,
+    budget: &'a Budget,
 }
 
 impl Parser<'_> {
@@ -132,24 +144,32 @@ impl Parser<'_> {
         if count == 0 {
             return Err(self.malformed("expected ODL scalar"));
         }
-        let text = rest
-            .get(..count)
-            .ok_or_else(|| self.malformed("invalid ODL scalar boundary"))?
-            .to_owned();
+        let text = self.budget.text(
+            rest.get(..count)
+                .ok_or_else(|| self.malformed("invalid ODL scalar boundary"))?,
+        )?;
         self.advance(count)?;
         Ok(text)
     }
 
     fn quoted(&mut self) -> Result<String> {
         self.next()?;
-        let mut text = String::new();
-        loop {
-            match self.next()? {
-                '"' => return Ok(text),
-                '\0' => return Err(self.malformed("null inside ODL string")),
-                ch => text.push(ch),
-            }
+        let rest = self.remaining()?;
+        let end = rest
+            .find('"')
+            .ok_or_else(|| self.malformed("unexpected end of ODL"))?;
+        let value = rest
+            .get(..end)
+            .ok_or_else(|| self.malformed("invalid ODL string boundary"))?;
+        if value.contains('\0') {
+            return Err(self.malformed("null inside ODL string"));
         }
+        let text = self.budget.text(value)?;
+        self.advance(
+            end.checked_add(1)
+                .ok_or_else(|| self.malformed("ODL string length overflow"))?,
+        )?;
+        Ok(text)
     }
 
     fn nested_depth(&self, depth: u64) -> Result<u64> {
@@ -180,6 +200,8 @@ impl Parser<'_> {
             return Ok(Value::List(items));
         }
         loop {
+            self.budget.items::<Value>(1)?;
+            reserve(&mut items, 1)?;
             items.push(self.value(depth)?);
             self.whitespace()?;
             if self.remaining()?.starts_with(')') {
@@ -214,6 +236,8 @@ impl Parser<'_> {
                 return Ok(Odl { entries });
             }
             // A repeated name is kept: readers take the first one, as the C library's text search does.
+            self.budget.items::<Entry>(1)?;
+            reserve(&mut entries, 1)?;
             entries.push(self.entry(key, depth)?);
         }
     }
@@ -243,13 +267,26 @@ impl Parser<'_> {
         self.whitespace()?;
         let start = self.offset;
         let value = self.value(depth)?;
-        let raw = self
-            .text
-            .get(start..self.offset)
-            .ok_or_else(|| self.malformed("invalid ODL value boundary"))?
-            .to_owned();
+        let raw = self.budget.text(
+            self.text
+                .get(start..self.offset)
+                .ok_or_else(|| self.malformed("invalid ODL value boundary"))?,
+        )?;
+
         Ok(Entry::Assignment { name, value, raw })
     }
+}
+
+fn reserve<T>(values: &mut Vec<T>, additional: usize) -> Result<()> {
+    let bytes = values
+        .len()
+        .checked_add(additional)
+        .and_then(|count| count.checked_mul(std::mem::size_of::<T>()))
+        .ok_or_else(|| crate::read::allocation_error(u64::MAX))?;
+    crate::read::allocation_size(bytes as u64)?;
+    values
+        .try_reserve(additional)
+        .map_err(|_| crate::read::allocation_error(bytes as u64))
 }
 
 #[cfg(test)]
@@ -257,6 +294,39 @@ impl Parser<'_> {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    #[test]
+    fn sq10_odl_vectors_reject_capacity_overflow() {
+        assert!(matches!(
+            reserve(&mut Vec::<Value>::new(), usize::MAX),
+            Err(Error::LimitExceeded {
+                limit: "allocation_bytes",
+                ..
+            })
+        ));
+        assert!(matches!(
+            reserve(&mut Vec::<Entry>::new(), usize::MAX),
+            Err(Error::LimitExceeded {
+                limit: "allocation_bytes",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn sq10_odl_vectors_preserve_entries_and_list_items() {
+        let text = format!("A=({}) {}", vec!["x"; 64].join(","), "B=y ".repeat(64));
+        let document = parse(&text, &Limits::default()).expect("growing vectors");
+        assert_eq!(document.entries.len(), 65);
+        let Entry::Assignment {
+            value: Value::List(items),
+            ..
+        } = &document.entries[0]
+        else {
+            panic!("list");
+        };
+        assert_eq!(items, &vec![Value::Scalar("x".into()); 64]);
+    }
 
     #[test]
     fn sq6_odl_parser_obeys_custom_depth_limits() {
