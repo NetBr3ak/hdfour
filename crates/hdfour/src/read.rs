@@ -127,12 +127,18 @@ impl Reader<'_> {
 
     pub fn bytes(&self, descriptor: &Descriptor) -> Result<Vec<u8>> {
         let length = element::len(self.source, self.index, descriptor)?;
-        let mut bytes = vec![0; allocation(length, self.limits())?];
+        let mut bytes = buffer(allocation(length, self.limits())?)?;
         element::read(self.source, self.index, descriptor, &mut bytes)?;
         Ok(bytes)
     }
 
     pub fn records(&self, header: &crate::vset::VdataHeader, reference: u16) -> Result<Vec<u8>> {
+        if header.interlace != 0 {
+            return Err(Error::Unsupported {
+                feature: "vdata-interlace",
+                object: header.name.clone(),
+            });
+        }
         let length = u64::from(header.records)
             .checked_mul(u64::from(header.record_size))
             .ok_or_else(|| malformed("Vdata record size overflow"))?;
@@ -220,12 +226,21 @@ impl Reader<'_> {
                 return Err(malformed("truncated chunk header"));
             }
         }
-        let mut bytes = vec![0; allocation(length, self.limits())?];
+        let mut bytes = buffer(allocation(length, self.limits())?)?;
         dd::read_at(self.source, offset, &mut bytes)?;
         special::parse(&bytes, self.limits())
     }
 
+    #[cfg(test)]
     pub fn layout(&self, key: Option<(u16, u16)>) -> Result<(Storage, Codec, u64)> {
+        self.layout_with_budget(key, self.index.metadata())
+    }
+
+    pub fn layout_with_budget(
+        &self,
+        key: Option<(u16, u16)>,
+        budget: &crate::metadata::Budget,
+    ) -> Result<(Storage, Codec, u64)> {
         let Some(key) = key else {
             return Ok((Storage::Empty, Codec::None, 0));
         };
@@ -249,6 +264,7 @@ impl Reader<'_> {
             Special::External => Ok((Storage::External, Codec::None, 0)),
             Special::Chunked(header) => {
                 let length = chunk::validate(self, &header)?;
+                budget.items::<u64>(header.dimensions.len())?;
                 let shape = header
                     .dimensions
                     .iter()
@@ -351,7 +367,7 @@ impl Reader<'_> {
         let count = bytes
             .checked_div(std::mem::size_of::<T>())
             .ok_or_else(|| malformed("zero value width"))?;
-        let mut values = vec![T::default(); count];
+        let mut values = buffer::<T>(count)?;
         let output = bytemuck::must_cast_slice_mut::<T, u8>(&mut values);
         self.read_array(dataset, output)
             .map_err(|error| named(error, dataset))?;
@@ -451,7 +467,33 @@ pub(crate) fn array_bytes(shape: &[u64], width: usize, limits: &Limits) -> Resul
 
 pub(crate) fn allocation(length: u64, limits: &Limits) -> Result<usize> {
     dd::check_limit("array_bytes", length, limits.max_array_bytes)?;
-    usize::try_from(length).map_err(|_| malformed("allocation size does not fit address space"))
+    allocation_size(length)
+}
+
+pub(crate) fn allocation_size(length: u64) -> Result<usize> {
+    dd::check_limit("allocation_bytes", length, isize::MAX as u64)?;
+    usize::try_from(length).map_err(|_| allocation_error(length))
+}
+
+pub(crate) fn allocation_error(length: u64) -> Error {
+    Error::LimitExceeded {
+        limit: "allocation_bytes",
+        value: length,
+        max: isize::MAX as u64,
+    }
+}
+
+pub(crate) fn buffer<T: Default + Clone>(count: usize) -> Result<Vec<T>> {
+    let bytes = count
+        .checked_mul(std::mem::size_of::<T>())
+        .ok_or_else(|| allocation_error(u64::MAX))?;
+    allocation_size(bytes as u64)?;
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(count)
+        .map_err(|_| allocation_error(bytes as u64))?;
+    values.resize(count, T::default());
+    Ok(values)
 }
 
 pub(crate) fn word32(bytes: &[u8]) -> Result<u32> {
@@ -572,6 +614,52 @@ fn default_fill(dtype: DType, order: ByteOrder) -> Vec<u8> {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sq7_chunk_shape_bytes_are_charged_before_collection() -> Result<()> {
+        let source = Memory::new(include_bytes!("../../../fixtures/F07.hdf").as_slice());
+        let index = dd::parse(&source, &Limits::default())?;
+        let reader = Reader {
+            source: &source,
+            index: &index,
+        };
+        let before = index.metadata().used();
+        let (storage, _, _) = reader.layout(Some((702, 3)))?;
+        let Storage::Chunked { chunk_shape } = storage else {
+            return Err(malformed("expected chunked storage"));
+        };
+        let charged = index.metadata().used().checked_sub(before).expect("charge");
+        assert_eq!(
+            charged,
+            u64::try_from(chunk_shape.len().checked_mul(8).expect("shape bytes"))
+                .expect("charge size")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sq7_allocation_length_rejects_more_than_isize_max() {
+        let length = (isize::MAX as u64).checked_add(1).expect("boundary");
+        let limits = Limits {
+            max_array_bytes: u64::MAX,
+            ..Limits::default()
+        };
+        assert!(
+            matches!(allocation(length, &limits), Err(Error::LimitExceeded { limit: "allocation_bytes", value, max }) if value == length && max == isize::MAX as u64)
+        );
+        let limits = Limits {
+            max_array_bytes: 8,
+            ..limits
+        };
+        assert!(matches!(
+            allocation(length, &limits),
+            Err(Error::LimitExceeded {
+                limit: "array_bytes",
+                max: 8,
+                ..
+            })
+        ));
+    }
 
     #[test]
     fn prepare_rejects_inconsistent_storage_before_array_allocation() -> Result<()> {

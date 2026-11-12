@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::read::{Reader, allocation, array_bytes, malformed};
+use crate::read::{Reader, allocation, array_bytes, buffer, malformed};
 use crate::special::Chunked;
 use crate::{Dataset, Result, Value, dd, vset};
 
@@ -117,6 +117,10 @@ fn table(reader: &Reader<'_>, header: &Chunked) -> Result<Entries> {
     }
     let mut entries = BTreeMap::new();
     for ((origin, tag), reference) in origins.chunks_exact(rank).zip(tags).zip(references) {
+        // hchunks.c:2376-2409 accepts DFTAG_NULL (1), not wildcard tag 0.
+        if tag == 0 {
+            return Err(malformed("invalid chunk tag"));
+        }
         let origin = origin
             .iter()
             .zip(&header.dimensions)
@@ -143,7 +147,8 @@ pub(crate) fn prepare(reader: &Reader<'_>, header: &Chunked) -> Result<()> {
     validate(reader, header)?;
     let bytes = chunk_bytes(reader, header)?;
     for &(tag, reference) in table(reader, header)?.values() {
-        if tag != 0 {
+        // hchunks.c:2624-2635 fills explicit DFTAG_NULL (1) records.
+        if tag != 1 {
             reader.prepare_chunk((tag, reference), bytes)?;
         }
     }
@@ -293,12 +298,12 @@ impl Assembly<'_, '_> {
             .ok_or_else(|| malformed("zero first chunk extent"))?;
         let end_chunk = end.div_ceil(first.chunk_length);
         for (origin, &(tag, reference)) in self.entries.range(vec![start_chunk]..vec![end_chunk]) {
-            if tag == 0 {
+            if tag == 1 {
                 continue;
             }
             let bytes = chunk_bytes(self.reader, self.header)?;
             self.reader.prepare_chunk((tag, reference), bytes)?;
-            let mut chunk = vec![0; bytes];
+            let mut chunk = buffer(bytes)?;
             self.reader.read_chunk((tag, reference), &mut chunk)?;
             copy_chunk(&self.geometry, origin, &chunk, &mut band)?;
         }

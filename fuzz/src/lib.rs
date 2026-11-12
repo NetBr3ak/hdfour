@@ -15,6 +15,7 @@ pub fn open_read_all(bytes: &[u8]) -> Result<usize> {
         max_rank: 8,
         max_array_bytes: ARRAY_BYTES,
         max_attribute_bytes: 262_144,
+        max_metadata_bytes: 1_048_576,
         max_chunks: 1024,
         max_chunk_header_bytes: 256,
     };

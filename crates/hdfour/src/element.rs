@@ -128,13 +128,7 @@ fn read_linked(
             what: "linked table size overflow",
         })?;
     dd::check_limit("array_bytes", table_length, index.limits().max_array_bytes)?;
-    let mut table_bytes = vec![
-        0;
-        usize::try_from(table_length).map_err(|_| Error::Malformed {
-            offset: 0,
-            what: "linked table is too large"
-        })?
-    ];
+    let mut table_bytes = crate::read::buffer(crate::read::allocation_size(table_length)?)?;
     let mut visited = BTreeSet::new();
     let mut reference = header.link_ref;
     let mut slots = 0_u64;
