@@ -29,7 +29,6 @@ struct Catalog<'a, 'b> {
     reader: &'a Reader<'b>,
     groups: BTreeMap<u16, Vgroup>,
     headers: BTreeMap<u16, VdataHeader>,
-    attribute_bytes: u64,
     skipped: Vec<Skipped>,
 }
 
@@ -38,7 +37,6 @@ pub(crate) fn parse(reader: &Reader<'_>) -> Result<Metadata> {
         reader,
         groups: BTreeMap::new(),
         headers: BTreeMap::new(),
-        attribute_bytes: 0,
         skipped: Vec::new(),
     };
     for descriptor in reader
@@ -443,16 +441,12 @@ impl Catalog<'_, '_> {
         Ok(attributes)
     }
 
-    fn charge_attributes(&mut self, length: u64, budget: &Budget) -> Result<()> {
+    fn charge_attributes(&self, length: u64, budget: &Budget) -> Result<()> {
         dd::check_limit(
             "attribute_bytes",
             length,
             self.reader.limits().max_attribute_bytes,
         )?;
-        self.attribute_bytes = self
-            .attribute_bytes
-            .checked_add(length)
-            .ok_or_else(|| malformed("total attribute size overflow"))?;
         budget.charge(length)
     }
 
@@ -1003,7 +997,6 @@ mod tests {
                 (5, group("field group", vec![])),
             ]),
             headers: BTreeMap::new(),
-            attribute_bytes: 0,
             skipped: Vec::new(),
         };
         let dataset = |name: &str, ndg_ref| Dataset {
@@ -1105,7 +1098,6 @@ mod sq7_tests {
                     attributes: vec![],
                 },
             )]),
-            attribute_bytes: 0,
             skipped: vec![],
         };
         let attributes = [Attribute { name: "StructMetadata.0".into(), value: Value::Char8(
@@ -1163,7 +1155,6 @@ mod sq7_tests {
             reader: &reader,
             groups: BTreeMap::new(),
             headers: BTreeMap::new(),
-            attribute_bytes: 0,
             skipped: Vec::new(),
         };
         let mut text = String::from("GROUP=GridStructure ");
@@ -1244,7 +1235,6 @@ mod sq7_tests {
             reader: &reader,
             groups,
             headers: BTreeMap::new(),
-            attribute_bytes: 0,
             skipped: vec![],
         };
         let text = format!(

@@ -7,6 +7,28 @@ Releases will use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Workspace foundations, public metadata types, resource limits, positional
-  byte sources and number-type decoding, with unit and property tests.
-- Development checks, contribution guidance, reporting policies and licences.
+- Rust core: `open`, `File::from_bytes` and `File::from_source` read all metadata;
+  `File::read` reads one whole dataset as raw values in C order.
+- HDF4 container: header check, data descriptor blocks, linked, compressed and
+  chunked special elements.
+- SD layout with a `CDF0.0` Vgroup: datasets, dimensions (unlimited too),
+  coordinate variables, and attributes on the file, datasets and dimensions.
+- Number types i8, u8, i16, u16, i32, u32, f32, f64, char8 and uchar8, in both
+  byte orders.
+- Codecs none, DEFLATE and RLE.
+- Fill values for datasets and chunks that were never written.
+- HDF-EOS2: `StructMetadata` parts joined in order, an ODL parser, grids and
+  swaths with fields linked to datasets, dimension maps and raw parameters.
+- Refusals by feature name: `Error::Unsupported` on read, `File::skipped()` for
+  objects left out at open.
+- Resource limits (`Limits`) for descriptors, DD blocks, group depth, rank, array
+  bytes, attribute bytes, metadata bytes, chunks and chunk header bytes.
+- Python binding (`hdfour`) with NumPy arrays, a type stub and its own exception
+  classes.
+- WebAssembly binding with typed arrays, and a one-page browser inspector in
+  `demo/`.
+- Fixtures F01 to F21 written through the HDF4 C library, with golden files;
+  corpus files R02 and R03 from the HDF4 test suite.
+- Golden, property, Python, WebAssembly and fuzz tests; a benchmark harness with
+  no results yet.
+- Contribution guidance, reporting policies and licences.
