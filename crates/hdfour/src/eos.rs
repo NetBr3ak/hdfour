@@ -15,26 +15,50 @@ use crate::{DimensionMap, Eos, EosField, EosObject, Error, Limits, Result, Skipp
 
 /// Map joined StructMetadata text to EOS objects and explicit feature refusals.
 /// Field dataset indices stay unset until the SD reader resolves Vgroup links.
-pub fn from_struct_metadata(text: &str) -> Result<(Eos, Vec<Skipped>)> {
-    let document = odl::parse(text)?;
+pub fn from_struct_metadata(text: &str, limits: &Limits) -> Result<(Eos, Vec<Skipped>)> {
+    let document = odl::parse(text, limits)?;
     let mut eos = Eos {
         grids: Vec::new(),
         swaths: Vec::new(),
     };
-    let mut skipped = Vec::new();
+    let mut skipped = Refusals {
+        entries: Vec::new(),
+        bytes: 0,
+        max_bytes: limits.max_attribute_bytes,
+    };
     for grid in objects(&document, "GridStructure") {
-        eos.grids.push(grid_object(grid, &mut skipped)?);
+        eos.grids.push(grid_object(grid, &mut skipped, limits)?);
     }
     for swath in objects(&document, "SwathStructure") {
-        eos.swaths.push(swath_object(swath, &mut skipped)?);
+        eos.swaths.push(swath_object(swath, &mut skipped, limits)?);
     }
     for point in objects(&document, "PointStructure") {
-        skipped.push(Skipped {
-            object: scalar(point, "PointName")?.to_owned(),
-            feature: "eos-point",
-        });
+        skipped.push(&[scalar(point, "PointName")?], "eos-point")?;
     }
-    Ok((eos, skipped))
+    Ok((eos, skipped.entries))
+}
+
+struct Refusals {
+    entries: Vec<Skipped>,
+    bytes: u64,
+    max_bytes: u64,
+}
+
+impl Refusals {
+    fn push(&mut self, parts: &[&str], feature: &'static str) -> Result<()> {
+        let bytes = parts.iter().try_fold(self.bytes, |total, part| {
+            total
+                .checked_add(part.len() as u64)
+                .ok_or_else(|| malformed("EOS refusal path size overflow"))
+        })?;
+        crate::dd::check_limit("attribute_bytes", bytes, self.max_bytes)?;
+        self.entries.push(Skipped {
+            object: parts.concat(),
+            feature,
+        });
+        self.bytes = bytes;
+        Ok(())
+    }
 }
 
 fn malformed(what: &'static str) -> Error {
@@ -77,17 +101,18 @@ fn scalar<'a>(body: &'a Odl, name: &str) -> Result<&'a str> {
     }
 }
 
-fn list(body: &Odl, name: &str) -> Result<Vec<String>> {
+fn list<'a>(body: &'a Odl, name: &str) -> Result<&'a [Value]> {
     let Value::List(items) = value(body, name)? else {
         return Err(malformed("expected EOS list"));
     };
-    items
-        .iter()
-        .map(|item| match item {
-            Value::Scalar(text) => Ok(text.clone()),
-            Value::List(_) => Err(malformed("expected EOS scalar list item")),
-        })
-        .collect()
+    Ok(items)
+}
+
+fn list_scalar(item: &Value) -> Result<&str> {
+    match item {
+        Value::Scalar(text) => Ok(text),
+        Value::List(_) => Err(malformed("expected EOS scalar list item")),
+    }
 }
 
 fn size(body: &Odl, name: &str) -> Result<u64> {
@@ -128,26 +153,29 @@ fn parameters(body: &Odl) -> Vec<(String, String)> {
         .collect()
 }
 
-fn merged_fields(body: &Odl, object: &str, skipped: &mut Vec<Skipped>) -> Result<BTreeSet<String>> {
+fn merged_fields(body: &Odl, object: &str, skipped: &mut Refusals) -> Result<BTreeSet<String>> {
     let mut merged = BTreeSet::new();
     // EHapi.c (GDAL 1.11.5):2141-2145 stores the constituent names in FieldList.
     for fields in objects(body, "MergedFields") {
         scalar(fields, "MergedFieldName")?;
-        for name in list(fields, "FieldList")? {
-            if merged.contains(&name) {
+        for item in list(fields, "FieldList")? {
+            let name = list_scalar(item)?;
+            if merged.contains(name) {
                 continue;
             }
-            skipped.push(Skipped {
-                object: format!("{object}/{name}"),
-                feature: "merged-field",
-            });
-            merged.insert(name);
+            skipped.push(&[object, "/", name], "merged-field")?;
+            merged.insert(name.to_owned());
         }
     }
     Ok(merged)
 }
 
-fn fields(body: &Odl, section: &str, merged: &BTreeSet<String>) -> Result<Vec<EosField>> {
+fn fields(
+    body: &Odl,
+    section: &str,
+    merged: &BTreeSet<String>,
+    limits: &Limits,
+) -> Result<Vec<EosField>> {
     let name_key = match section {
         "GeoField" => "GeoFieldName",
         "DataField" => "DataFieldName",
@@ -160,16 +188,12 @@ fn fields(body: &Odl, section: &str, merged: &BTreeSet<String>) -> Result<Vec<Eo
         if merged.contains(&name) {
             continue;
         }
-        let dims = list(field, "DimList")?;
-        let rank = dims.len() as u64;
-        let max = Limits::default().max_rank;
-        if rank > max {
-            return Err(Error::LimitExceeded {
-                limit: "rank",
-                value: rank,
-                max,
-            });
-        }
+        let items = list(field, "DimList")?;
+        crate::dd::check_limit("rank", items.len() as u64, limits.max_rank)?;
+        let dims = items
+            .iter()
+            .map(|item| list_scalar(item).map(str::to_owned))
+            .collect::<Result<_>>()?;
         fields.push(EosField {
             name,
             dims,
@@ -180,7 +204,7 @@ fn fields(body: &Odl, section: &str, merged: &BTreeSet<String>) -> Result<Vec<Eo
     Ok(fields)
 }
 
-fn grid_object(body: &Odl, skipped: &mut Vec<Skipped>) -> Result<EosObject> {
+fn grid_object(body: &Odl, skipped: &mut Refusals, limits: &Limits) -> Result<EosObject> {
     let name = scalar(body, "GridName")?.to_owned();
     // GDapi.c (GDAL 1.11.5):467-471 declares XDim and YDim outside Dimension.
     let mut dims = vec![
@@ -192,17 +216,17 @@ fn grid_object(body: &Odl, skipped: &mut Vec<Skipped>) -> Result<EosObject> {
     Ok(EosObject {
         name,
         dims,
-        fields: fields(body, "DataField", &merged)?,
+        fields: fields(body, "DataField", &merged, limits)?,
         dimension_maps: Vec::new(),
         params: parameters(body),
     })
 }
 
-fn swath_object(body: &Odl, skipped: &mut Vec<Skipped>) -> Result<EosObject> {
+fn swath_object(body: &Odl, skipped: &mut Refusals, limits: &Limits) -> Result<EosObject> {
     let name = scalar(body, "SwathName")?.to_owned();
     let merged = merged_fields(body, &name, skipped)?;
-    let mut swath_fields = fields(body, "GeoField", &merged)?;
-    swath_fields.extend(fields(body, "DataField", &merged)?);
+    let mut swath_fields = fields(body, "GeoField", &merged, limits)?;
+    swath_fields.extend(fields(body, "DataField", &merged, limits)?);
     // EHapi.c (GDAL 1.11.5):1938-1944 writes the four linear map entries.
     let dimension_maps = objects(body, "DimensionMap")
         .map(|map| {
@@ -216,14 +240,16 @@ fn swath_object(body: &Odl, skipped: &mut Vec<Skipped>) -> Result<EosObject> {
         .collect::<Result<Vec<_>>>()?;
     // SWapi.c:2152-2160 distinguishes index maps from linear DimensionMap entries.
     for map in objects(body, "IndexDimensionMap") {
-        skipped.push(Skipped {
-            object: format!(
-                "{name}/{}/{}",
+        skipped.push(
+            &[
+                &name,
+                "/",
                 scalar(map, "GeoDimension")?,
-                scalar(map, "DataDimension")?
-            ),
-            feature: "index-dimension-map",
-        });
+                "/",
+                scalar(map, "DataDimension")?,
+            ],
+            "index-dimension-map",
+        )?;
     }
     Ok(EosObject {
         name,
@@ -242,8 +268,126 @@ mod tests {
     const SWATH: &str = include_str!("../../../fixtures/odl/swath.odl");
 
     #[test]
+    #[allow(clippy::arithmetic_side_effects)]
+    fn sq6_refusal_paths_obey_cumulative_byte_budget() {
+        let name = "é".repeat(16);
+        for feature in ["index-dimension-map", "merged-field", "eos-point"] {
+            let path_bytes = name.len()
+                + match feature {
+                    "index-dimension-map" => 4,
+                    "merged-field" => 2,
+                    _ => 0,
+                };
+            let max = u64::try_from(path_bytes * 2).expect("budget");
+            let limits = Limits {
+                max_attribute_bytes: max,
+                ..Limits::default()
+            };
+            for count in [2, 3] {
+                let text = match feature {
+                    "index-dimension-map" => format!(
+                        "GROUP=SwathStructure GROUP=S SwathName=\"{name}\" GROUP=IndexDimensionMap {} END_GROUP=IndexDimensionMap END_GROUP=S END_GROUP=SwathStructure",
+                        "OBJECT=M GeoDimension=x DataDimension=y END_OBJECT=M ".repeat(count)
+                    ),
+                    "merged-field" => format!(
+                        "GROUP=GridStructure GROUP=G GridName=\"{name}\" XDim=1 YDim=1 GROUP=MergedFields OBJECT=M MergedFieldName=m FieldList=({}) END_OBJECT=M END_GROUP=MergedFields END_GROUP=G END_GROUP=GridStructure",
+                        ["x", "y", "z"]
+                            .iter()
+                            .take(count)
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    ),
+                    _ => format!(
+                        "GROUP=PointStructure {} END_GROUP=PointStructure",
+                        format!("OBJECT=P PointName=\"{name}\" END_OBJECT=P ").repeat(count)
+                    ),
+                };
+                let result = from_struct_metadata(&text, &limits);
+                if count == 2 {
+                    let (_, skipped) = result.expect("exact budget");
+                    assert_eq!(skipped.len(), count);
+                    assert!(skipped.iter().all(|entry| entry.feature == feature));
+                } else {
+                    assert!(
+                        matches!(result, Err(Error::LimitExceeded { limit: "attribute_bytes", value, max: ceiling }) if value == max + u64::try_from(path_bytes).expect("path bytes") && ceiling == max),
+                        "{feature}: {result:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[allow(clippy::arithmetic_side_effects)]
+    fn sq6_refusal_budget_is_shared_across_eos_objects() {
+        let text = SWATH.replace(
+            "GROUP=PointStructure\nEND_GROUP=PointStructure",
+            "GROUP=PointStructure OBJECT=P PointName=P END_OBJECT=P END_GROUP=PointStructure",
+        );
+        let (_, skipped) = from_struct_metadata(&text, &Limits::default()).expect("refusals");
+        let total = skipped
+            .iter()
+            .map(|entry| u64::try_from(entry.object.len()).expect("path length"))
+            .sum::<u64>();
+        let limits = Limits {
+            max_attribute_bytes: total,
+            ..Limits::default()
+        };
+        assert!(from_struct_metadata(&text, &limits).is_ok());
+        let limits = Limits {
+            max_attribute_bytes: total - 1,
+            ..limits
+        };
+        assert!(
+            matches!(from_struct_metadata(&text, &limits), Err(Error::LimitExceeded { limit: "attribute_bytes", value, max }) if value == total && max == total - 1)
+        );
+    }
+
+    #[test]
+    fn sq6_eos_parser_obeys_custom_rank_and_depth_limits() {
+        let limits = Limits {
+            max_rank: 1,
+            ..Limits::default()
+        };
+        assert!(matches!(
+            from_struct_metadata(GRID, &limits),
+            Err(Error::LimitExceeded {
+                limit: "rank",
+                value: 2,
+                max: 1
+            })
+        ));
+        let limits = Limits {
+            max_group_depth: 1,
+            ..Limits::default()
+        };
+        assert!(matches!(
+            from_struct_metadata(GRID, &limits),
+            Err(Error::LimitExceeded {
+                limit: "group depth",
+                value: 2,
+                max: 1
+            })
+        ));
+        let dimensions = std::iter::repeat_n("\"XDim\"", 33)
+            .collect::<Vec<_>>()
+            .join(",");
+        let grid = GRID.replace(
+            "DimList=(\"YDim\",\"XDim\")",
+            &format!("DimList=({dimensions})"),
+        );
+        let limits = Limits {
+            max_rank: 33,
+            ..Limits::default()
+        };
+        let (eos, _) = from_struct_metadata(&grid, &limits).expect("raised rank");
+        assert_eq!(eos.grids[0].fields[0].dims.len(), 33);
+    }
+
+    #[test]
     fn maps_grid_dimensions_fields_and_raw_parameters() {
-        let (eos, skipped) = from_struct_metadata(GRID).expect("grid");
+        let (eos, skipped) = from_struct_metadata(GRID, &Limits::default()).expect("grid");
         assert!(skipped.is_empty());
         assert!(eos.swaths.is_empty());
         assert_eq!(
@@ -286,7 +430,7 @@ mod tests {
 
     #[test]
     fn maps_swath_geolocation_and_dimension_map() {
-        let (eos, _) = from_struct_metadata(SWATH).expect("swath");
+        let (eos, _) = from_struct_metadata(SWATH, &Limits::default()).expect("swath");
         assert!(eos.grids.is_empty());
         assert_eq!(eos.swaths.len(), 1);
         let swath = &eos.swaths[0];
@@ -330,7 +474,7 @@ mod tests {
 
     #[test]
     fn reports_merged_fields_and_index_dimension_maps() {
-        let (_, skipped) = from_struct_metadata(SWATH).expect("swath");
+        let (_, skipped) = from_struct_metadata(SWATH, &Limits::default()).expect("swath");
         assert_eq!(
             skipped,
             vec![
@@ -352,8 +496,11 @@ mod tests {
 
     #[test]
     fn reports_point_structure() {
-        let (eos, skipped) =
-            from_struct_metadata(include_str!("../../../fixtures/odl/point.odl")).expect("point");
+        let (eos, skipped) = from_struct_metadata(
+            include_str!("../../../fixtures/odl/point.odl"),
+            &Limits::default(),
+        )
+        .expect("point");
         assert!(eos.grids.is_empty() && eos.swaths.is_empty());
         assert_eq!(
             skipped,
@@ -380,7 +527,7 @@ mod tests {
             "END_GROUP=GridStructure",
             &format!("  GROUP=GRID_2{second}END_GROUP=GridStructure"),
         );
-        let (eos, _) = from_struct_metadata(&two).expect("two grids");
+        let (eos, _) = from_struct_metadata(&two, &Limits::default()).expect("two grids");
         assert_eq!(
             eos.grids
                 .iter()
@@ -413,7 +560,7 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    from_struct_metadata(&text),
+                    from_struct_metadata(&text, &Limits::default()),
                     Err(crate::Error::Malformed { .. })
                 ),
                 "{text}"
@@ -424,15 +571,21 @@ mod tests {
     #[test]
     fn propagates_depth_limit() {
         assert!(matches!(
-            from_struct_metadata(include_str!("../../../fixtures/odl/too-deep.odl")),
+            from_struct_metadata(
+                include_str!("../../../fixtures/odl/too-deep.odl"),
+                &Limits::default()
+            ),
             Err(crate::Error::LimitExceeded { .. })
         ));
     }
 
     #[test]
     fn accepts_empty_structure_sections() {
-        let (eos, skipped) =
-            from_struct_metadata("GROUP=GridStructure END_GROUP=GridStructure END").expect("empty");
+        let (eos, skipped) = from_struct_metadata(
+            "GROUP=GridStructure END_GROUP=GridStructure END",
+            &Limits::default(),
+        )
+        .expect("empty");
         assert!(eos.grids.is_empty() && eos.swaths.is_empty() && skipped.is_empty());
     }
 }

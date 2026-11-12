@@ -41,13 +41,13 @@ pub enum Value {
     List(Vec<Value>),
 }
 
-/// Parse structural ODL, limiting combined group, object and list nesting to 64.
+/// Parse structural ODL with the file's combined group, object and list depth limit.
 /// Error offsets are UTF-8 byte positions in the metadata text.
-pub fn parse(text: &str) -> Result<Odl> {
+pub fn parse(text: &str, limits: &Limits) -> Result<Odl> {
     Parser {
         text: text.trim_end_matches('\0'),
         offset: 0,
-        max_depth: Limits::default().max_group_depth,
+        max_depth: limits.max_group_depth,
     }
     .body(None, 0)
 }
@@ -146,10 +146,6 @@ impl Parser<'_> {
         loop {
             match self.next()? {
                 '"' => return Ok(text),
-                '\\' => match self.next()? {
-                    ch @ ('"' | '\\') => text.push(ch),
-                    _ => return Err(self.malformed("invalid ODL string escape")),
-                },
                 '\0' => return Err(self.malformed("null inside ODL string")),
                 ch => text.push(ch),
             }
@@ -263,8 +259,60 @@ mod tests {
     use proptest::prelude::*;
 
     #[test]
+    fn sq6_odl_parser_obeys_custom_depth_limits() {
+        let limits = Limits {
+            max_group_depth: 1,
+            ..Limits::default()
+        };
+        for text in [
+            "GROUP=A OBJECT=B END_OBJECT=B END_GROUP=A",
+            "A=((0))",
+            "GROUP=A A=(0) END_GROUP=A",
+        ] {
+            assert!(matches!(
+                super::parse(text, &limits),
+                Err(Error::LimitExceeded {
+                    limit: "group depth",
+                    value: 2,
+                    max: 1
+                })
+            ));
+        }
+        assert!(super::parse("GROUP=A A=0 END_GROUP=A", &limits).is_ok());
+        let deep = format!("A={}0{}", "(".repeat(65), ")".repeat(65));
+        let limits = Limits {
+            max_group_depth: 65,
+            ..Limits::default()
+        };
+        assert!(super::parse(&deep, &limits).is_ok());
+    }
+
+    #[test]
+    fn sq6_quoted_backslashes_are_literal() -> Result<()> {
+        for text in [r"one\path", r"two\\paths", r"trailing\"] {
+            let document = parse(&format!("Name=\"{text}\" END"), &Limits::default())?;
+            assert!(matches!(
+                &document.entries[0],
+                Entry::Assignment { value: Value::Scalar(value), .. } if value == text
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn sq6_backslash_does_not_escape_a_quote() -> Result<()> {
+        let document = parse(r#"A="path\" B=2 END"#, &Limits::default())?;
+        assert!(matches!(
+            &document.entries[0],
+            Entry::Assignment { value: Value::Scalar(value), .. } if value == r"path\"
+        ));
+        assert_eq!(document.entries.len(), 2);
+        Ok(())
+    }
+
+    #[test]
     fn repeated_names_are_kept_in_source_order() -> Result<()> {
-        let document = parse("A=1\nA=2\nEND")?;
+        let document = parse("A=1\nA=2\nEND", &Limits::default())?;
         assert_eq!(document.entries.len(), 2);
         assert!(matches!(
             document.entries.first(),
@@ -275,7 +323,7 @@ mod tests {
 
     #[test]
     fn parses_groups_objects_lists_and_raw_values() {
-        let odl = parse("/* header */ GROUP=Grid OBJECT=Field Name=\"Band, one\" Values=(1, (\"x\",-2.5E+1)) END_OBJECT=Field END_GROUP=Grid END").expect("ODL");
+        let odl = parse("/* header */ GROUP=Grid OBJECT=Field Name=\"Band, one\" Values=(1, (\"x\",-2.5E+1)) END_OBJECT=Field END_GROUP=Grid END", &Limits::default()).expect("ODL");
         let Entry::Group { name, body } = &odl.entries[0] else {
             panic!("group")
         };
@@ -309,10 +357,14 @@ mod tests {
     }
 
     #[test]
-    fn parses_unicode_escaped_quotes_empty_lists_and_padding() {
-        let odl = parse("Name=\"測定 \\\"band\\\" \\\\ path\" Empty=() END\n\0\0").expect("ODL");
+    fn parses_unicode_literal_backslashes_empty_lists_and_padding() {
+        let odl = parse(
+            "Name=\"測定 band \\\\ path\" Empty=() END\n\0\0",
+            &Limits::default(),
+        )
+        .expect("ODL");
         assert!(
-            matches!(&odl.entries[0], Entry::Assignment { value: Value::Scalar(text), .. } if text == "測定 \"band\" \\ path")
+            matches!(&odl.entries[0], Entry::Assignment { value: Value::Scalar(text), .. } if text == "測定 band \\\\ path")
         );
         assert!(
             matches!(&odl.entries[1], Entry::Assignment { value: Value::List(items), .. } if items.is_empty())
@@ -335,12 +387,14 @@ mod tests {
             "/* unterminated",
             "/*/",
             "END A=1",
-            "A=\"bad\\q\"",
             "GROUP=(a) END_GROUP=a",
             "A=1\0B=2",
         ] {
             assert!(
-                matches!(parse(text), Err(crate::Error::Malformed { .. })),
+                matches!(
+                    parse(text, &Limits::default()),
+                    Err(crate::Error::Malformed { .. })
+                ),
                 "{text:?}"
             );
         }
@@ -349,7 +403,7 @@ mod tests {
     #[test]
     fn reports_byte_offset() {
         assert!(matches!(
-            parse("A=(1,)"),
+            parse("A=(1,)", &Limits::default()),
             Err(crate::Error::Malformed { offset: 5, .. })
         ));
     }
@@ -357,7 +411,10 @@ mod tests {
     #[test]
     fn enforces_group_depth_limit() {
         assert!(matches!(
-            parse(include_str!("../../../fixtures/odl/too-deep.odl")),
+            parse(
+                include_str!("../../../fixtures/odl/too-deep.odl"),
+                &Limits::default()
+            ),
             Err(crate::Error::LimitExceeded {
                 limit: "group depth",
                 value: 65,
@@ -369,16 +426,16 @@ mod tests {
             "GROUP=A\n".repeat(64),
             "END_GROUP=A\n".repeat(64)
         );
-        assert!(parse(&boundary).is_ok());
+        assert!(parse(&boundary, &Limits::default()).is_ok());
     }
 
     #[test]
     fn enforces_list_and_mixed_depth_limit() {
         let boundary = format!("A={}0{} END", "(".repeat(64), ")".repeat(64));
-        assert!(parse(&boundary).is_ok());
+        assert!(parse(&boundary, &Limits::default()).is_ok());
         let deep = format!("A={}0{} END", "(".repeat(65), ")".repeat(65));
         assert!(matches!(
-            parse(&deep),
+            parse(&deep, &Limits::default()),
             Err(crate::Error::LimitExceeded { .. })
         ));
         let mixed = format!(
@@ -387,7 +444,7 @@ mod tests {
             "END_OBJECT=A\n".repeat(64)
         );
         assert!(matches!(
-            parse(&mixed),
+            parse(&mixed, &Limits::default()),
             Err(crate::Error::LimitExceeded { .. })
         ));
     }
@@ -399,14 +456,14 @@ mod tests {
             include_str!("../../../fixtures/odl/swath.odl"),
             include_str!("../../../fixtures/odl/point.odl"),
         ] {
-            assert!(parse(text).is_ok());
+            assert!(parse(text, &Limits::default()).is_ok());
         }
     }
 
     proptest! {
         #[test]
         fn arbitrary_text_never_panics(text in any::<String>()) {
-            let _ = parse(&text);
+            let _ = parse(&text, &Limits::default());
         }
     }
 }

@@ -222,7 +222,7 @@ impl Reader<'_> {
         }
         let mut bytes = vec![0; allocation(length, self.limits())?];
         dd::read_at(self.source, offset, &mut bytes)?;
-        special::parse(&bytes)
+        special::parse(&bytes, self.limits())
     }
 
     pub fn layout(&self, key: Option<(u16, u16)>) -> Result<(Storage, Codec, u64)> {

@@ -10,6 +10,8 @@
 
 use crate::{Codec, Error, Limits, Result, dd};
 
+const MAX_CHUNK_HEADER_BYTES: u64 = 256;
+
 /// The storage kind encoded by a special element's u16 discriminator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Special {
@@ -71,16 +73,14 @@ pub struct ChunkDimension {
 }
 
 /// Parse a special header, keeping unsupported codec identities for read-time errors.
-/// Chunk header and rank ceilings are the specification defaults; callers apply
-/// tighter per-file limits before allocating arrays or reading chunk tables.
-pub fn parse(bytes: &[u8]) -> Result<Special> {
+pub fn parse(bytes: &[u8], limits: &Limits) -> Result<Special> {
     let mut reader = Reader { bytes, offset: 0 };
     // hblocks.c:656-676 and hcomp.c:608-615 use a u16 special discriminator.
     match reader.u16()? {
         1 => parse_linked(&mut reader).map(Special::Linked),
         2 => Ok(Special::External),
         3 => parse_compressed(&mut reader).map(Special::Compressed),
-        5 => parse_chunked(&mut reader).map(Special::Chunked),
+        5 => parse_chunked(&mut reader, limits).map(Special::Chunked),
         _ => Err(reader.malformed("unknown special-element code")),
     }
 }
@@ -93,7 +93,7 @@ fn parse_linked(reader: &mut Reader<'_>) -> Result<Linked> {
         number_blocks: reader.nonnegative()?,
         link_ref: reader.u16()?,
     };
-    if header.block_length == 0 || header.number_blocks == 0 {
+    if header.number_blocks == 0 {
         return Err(reader.malformed("zero linked-block geometry"));
     }
     if header.length != 0 && header.link_ref == 0 {
@@ -140,18 +140,17 @@ fn parse_compression(reader: &mut Reader<'_>) -> Result<Compression> {
     Ok(Compression {
         model,
         codec,
-        parameters: reader.take(reader.bytes.len())?.to_vec(),
+        parameters: reader.take(parameter_length)?.to_vec(),
     })
 }
 
-fn parse_chunked(reader: &mut Reader<'_>) -> Result<Chunked> {
+fn parse_chunked(reader: &mut Reader<'_>, limits: &Limits) -> Result<Chunked> {
     let header_length = reader.nonnegative()?;
     // hchunks.c:955-961 caps the body, excluding the u16 code and i32 length.
-    let limits = Limits::default();
     dd::check_limit(
         "chunk_header_bytes",
         u64::from(header_length),
-        limits.max_chunk_header_bytes,
+        limits.max_chunk_header_bytes.min(MAX_CHUNK_HEADER_BYTES),
     )?;
     let body = reader.take(
         usize::try_from(header_length)
@@ -327,9 +326,115 @@ mod tests {
     }
 
     #[test]
+    fn sq6_special_parser_obeys_custom_limits_and_format_ceiling() {
+        let bytes = chunk_header(2, &[0, 0]);
+        let limits = Limits {
+            max_rank: 1,
+            ..Limits::default()
+        };
+        assert!(matches!(
+            super::parse(&bytes, &limits),
+            Err(Error::LimitExceeded {
+                limit: "rank",
+                value: 2,
+                max: 1
+            })
+        ));
+        let body_length = u64::try_from(bytes.len() - 6).expect("body length");
+        let limits = Limits {
+            max_chunk_header_bytes: body_length - 1,
+            ..Limits::default()
+        };
+        assert!(
+            matches!(super::parse(&bytes, &limits), Err(Error::LimitExceeded { limit: "chunk_header_bytes", value, max }) if value == body_length && max == body_length - 1)
+        );
+        let limits = Limits {
+            max_chunk_header_bytes: body_length,
+            ..Limits::default()
+        };
+        assert!(super::parse(&bytes, &limits).is_ok());
+        let limits = Limits {
+            max_rank: 33,
+            ..Limits::default()
+        };
+        assert!(matches!(
+            super::parse(&chunk_header(33, &[]), &limits),
+            Err(Error::LimitExceeded {
+                limit: "chunk_header_bytes",
+                max: 256,
+                ..
+            })
+        ));
+        let limits = Limits {
+            max_chunk_header_bytes: 512,
+            ..Limits::default()
+        };
+        assert!(matches!(
+            super::parse(&chunk_header(1, &[0; 212]), &limits),
+            Err(Error::LimitExceeded {
+                limit: "chunk_header_bytes",
+                value: 257,
+                max: 256
+            })
+        ));
+    }
+
+    #[test]
+    fn sq6_compression_parameters_exclude_ignored_tails() {
+        for (code, width) in [
+            (0_u16, 0),
+            (1, 0),
+            (2, 16),
+            (3, 8),
+            (4, 2),
+            (5, 14),
+            (7, 0),
+            (12, 0),
+            (99, 0),
+        ] {
+            let mut bytes = vec![0, 3, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0];
+            bytes.extend(code.to_be_bytes());
+            bytes.extend(vec![6; width]);
+            bytes.extend(vec![0x55; 4096]);
+            let Special::Compressed(header) =
+                parse(&bytes, &Limits::default()).expect("compressed header")
+            else {
+                panic!("compressed variant");
+            };
+            assert_eq!(
+                header.compression.parameters,
+                vec![6; width],
+                "codec {code}"
+            );
+        }
+    }
+
+    #[test]
+    fn sq6_chunk_compression_parameters_exclude_ignored_tails() {
+        let mut bytes = chunk_header(1, &[0, 0]);
+        bytes[7..11].copy_from_slice(&3_u32.to_be_bytes());
+        bytes.extend(3_u16.to_be_bytes());
+        bytes.extend(4100_u32.to_be_bytes());
+        bytes.extend([0, 0, 0, 1]);
+        bytes.extend([0x55; 4096]);
+        let Special::Chunked(header) = parse(&bytes, &Limits::default()).expect("chunk header")
+        else {
+            panic!("chunk variant");
+        };
+        assert!(
+            header
+                .compression
+                .expect("compression")
+                .parameters
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn t1_linked_header_uses_u16_and_three_signed_i32_fields() {
         let bytes = [0, 1, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 2, 0, 7];
-        let Special::Linked(header) = parse(&bytes).expect("linked header") else {
+        let Special::Linked(header) = parse(&bytes, &Limits::default()).expect("linked header")
+        else {
             panic!("linked variant");
         };
         assert_eq!(header.length, 9);
@@ -337,19 +442,24 @@ mod tests {
         assert_eq!(header.number_blocks, 2);
         assert_eq!(header.link_ref, 7);
         for end in 0..bytes.len() {
-            assert!(parse(&bytes[..end]).is_err());
+            assert!(parse(&bytes[..end], &Limits::default()).is_err());
         }
         for start in [2, 6, 10] {
             let mut bad = bytes;
             bad[start] = 0x80;
-            assert!(matches!(parse(&bad), Err(Error::Malformed { .. })));
+            assert!(matches!(
+                parse(&bad, &Limits::default()),
+                Err(Error::Malformed { .. })
+            ));
         }
     }
 
     #[test]
     fn compressed_header_exposes_model_codec_and_parameters() {
         let bytes = [0, 3, 0, 0, 0, 0, 0, 12, 0, 5, 0, 0, 0, 4, 0, 6];
-        let Special::Compressed(header) = parse(&bytes).expect("compressed header") else {
+        let Special::Compressed(header) =
+            parse(&bytes, &Limits::default()).expect("compressed header")
+        else {
             panic!("compressed variant");
         };
         assert_eq!(header.length, 12);
@@ -358,11 +468,11 @@ mod tests {
         assert_eq!(header.compression.codec, Codec::Deflate);
         assert_eq!(header.compression.parameters, [0, 6]);
         for end in 0..bytes.len() {
-            assert!(parse(&bytes[..end]).is_err());
+            assert!(parse(&bytes[..end], &Limits::default()).is_err());
         }
         let mut bad = bytes;
         bad[3] = 1;
-        assert!(parse(&bad).is_err());
+        assert!(parse(&bad, &Limits::default()).is_err());
     }
 
     #[test]
@@ -380,7 +490,9 @@ mod tests {
             let mut bytes = vec![0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
             bytes.extend(code.to_be_bytes());
             bytes.resize(bytes.len() + parameters, 0);
-            let Special::Compressed(header) = parse(&bytes).expect("codec header") else {
+            let Special::Compressed(header) =
+                parse(&bytes, &Limits::default()).expect("codec header")
+            else {
                 panic!("compressed variant");
             };
             let expected = match code {
@@ -390,14 +502,21 @@ mod tests {
             };
             assert_eq!(header.compression.codec, expected);
         }
-        assert!(matches!(parse(&[0, 2]), Ok(Special::External)));
-        assert!(matches!(parse(&[0, 99]), Err(Error::Malformed { .. })));
+        assert!(matches!(
+            parse(&[0, 2], &Limits::default()),
+            Ok(Special::External)
+        ));
+        assert!(matches!(
+            parse(&[0, 99], &Limits::default()),
+            Err(Error::Malformed { .. })
+        ));
     }
 
     #[test]
     fn t6_chunk_header_exposes_dimensions_table_and_file_order_fill() {
         let bytes = chunk_header(2, &[0xff, 0x81]);
-        let Special::Chunked(header) = parse(&bytes).expect("chunk header") else {
+        let Special::Chunked(header) = parse(&bytes, &Limits::default()).expect("chunk header")
+        else {
             panic!("chunk variant");
         };
         assert_eq!(header.length, 24);
@@ -412,7 +531,7 @@ mod tests {
         assert_eq!(header.fill_value, [0xff, 0x81]);
         assert!(header.compression.is_none());
         for end in 0..bytes.len() {
-            assert!(parse(&bytes[..end]).is_err());
+            assert!(parse(&bytes[..end], &Limits::default()).is_err());
         }
     }
 
@@ -420,28 +539,34 @@ mod tests {
     fn t6_chunk_header_checks_version_size_rank_and_signed_values() {
         let mut bytes = chunk_header(1, &[0, 0]);
         bytes[6] = 1;
-        assert!(parse(&bytes).is_err());
+        assert!(parse(&bytes, &Limits::default()).is_err());
         for start in [2, 11, 15, 19, 31, 39, 43, 47] {
             let mut bytes = chunk_header(1, &[0, 0]);
             bytes[start] = 0x80;
-            assert!(parse(&bytes).is_err());
+            assert!(parse(&bytes, &Limits::default()).is_err());
         }
         for (rank, fill_len) in [(0, 2), (33, 2), (1, 212)] {
-            assert!(parse(&chunk_header(rank, &vec![0; fill_len])).is_err());
+            assert!(parse(&chunk_header(rank, &vec![0; fill_len]), &Limits::default()).is_err());
         }
         let bytes = chunk_header(1, &[0; 211]);
         assert_eq!(bytes.len(), 262);
-        assert!(parse(&bytes).is_ok());
+        assert!(parse(&bytes, &Limits::default()).is_ok());
     }
 
     #[test]
     fn declared_chunk_body_cannot_borrow_bytes_from_the_next_header() {
         let mut bytes = chunk_header(1, &[0, 0]);
         bytes[2..6].copy_from_slice(&32_u32.to_be_bytes());
-        assert!(matches!(parse(&bytes), Err(Error::Malformed { .. })));
+        assert!(matches!(
+            parse(&bytes, &Limits::default()),
+            Err(Error::Malformed { .. })
+        ));
         let mut bytes = chunk_header(1, &[0, 0]);
         bytes[43..47].copy_from_slice(&0_u32.to_be_bytes());
-        assert!(matches!(parse(&bytes), Err(Error::Malformed { .. })));
+        assert!(matches!(
+            parse(&bytes, &Limits::default()),
+            Err(Error::Malformed { .. })
+        ));
     }
 
     #[test]
@@ -449,7 +574,9 @@ mod tests {
         let mut bytes = chunk_header(1, &[0, 0]);
         bytes[7..11].copy_from_slice(&3_u32.to_be_bytes());
         bytes.extend([0, 3, 0, 0, 0, 6, 0, 0, 0, 4, 0, 6]);
-        let Special::Chunked(header) = parse(&bytes).expect("compressed chunks") else {
+        let Special::Chunked(header) =
+            parse(&bytes, &Limits::default()).expect("compressed chunks")
+        else {
             panic!("chunk variant");
         };
         assert_eq!(
@@ -457,13 +584,13 @@ mod tests {
             Codec::Deflate
         );
         bytes.pop();
-        assert!(parse(&bytes).is_err());
+        assert!(parse(&bytes, &Limits::default()).is_err());
     }
 
     proptest! {
         #[test]
         fn random_special_bytes_never_panic(bytes in prop::collection::vec(any::<u8>(), 0..512)) {
-            let _result = parse(&bytes);
+            let _result = parse(&bytes, &Limits::default());
         }
     }
 }
