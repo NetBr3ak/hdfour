@@ -1,0 +1,95 @@
+{
+  "file": "F14.hdf",
+  "sha256": "94aea65d558055704315eb305c71ca4ad61a5515a85583795756a9f8adfc2432",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "fakeDim0",
+      "dtype": 22,
+      "shape": [
+        3
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": true,
+      "expect": "skipped:legacy-sd-layout"
+    },
+    {
+      "index": 1,
+      "name": "fakeDim1",
+      "dtype": 22,
+      "shape": [
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": true,
+      "expect": "skipped:legacy-sd-layout"
+    },
+    {
+      "index": 2,
+      "name": "Data-Set-2",
+      "dtype": 22,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "skipped:legacy-sd-layout"
+    }
+  ],
+  "skipped": [
+    {
+      "object": "NDG 2",
+      "feature": "legacy-sd-layout"
+    }
+  ],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 6
+    },
+    {
+      "index": 1,
+      "read": "ok",
+      "bytes": 10
+    },
+    {
+      "index": 2,
+      "read": "ok",
+      "bytes": 30
+    }
+  ]
+}

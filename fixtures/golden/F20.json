@@ -1,0 +1,49 @@
+{
+  "file": "F20.hdf",
+  "sha256": "58ce751b4c35b1292c9ebfea2f8966694bed22c49ad461a61290ecafc649c94d",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "unwritten_deflate",
+      "dtype": 22,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [
+        {
+          "name": "_FillValue",
+          "dtype": 22,
+          "count": 1,
+          "hex": "c7cf"
+        }
+      ],
+      "is_coordinate": false,
+      "expect": "values"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 30
+    }
+  ]
+}

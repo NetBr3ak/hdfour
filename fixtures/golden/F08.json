@@ -1,0 +1,49 @@
+{
+  "file": "F08.hdf",
+  "sha256": "4b7f6dd934f76213e182efe4289c9ad9f1ee347d990a56f3fc0eb8f8f134810c",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "chunks",
+      "dtype": 22,
+      "shape": [
+        5,
+        7
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 7,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [
+        {
+          "name": "_FillValue",
+          "dtype": 22,
+          "count": 1,
+          "hex": "c7cf"
+        }
+      ],
+      "is_coordinate": false,
+      "expect": "values"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 70
+    }
+  ]
+}

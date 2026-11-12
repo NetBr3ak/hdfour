@@ -1,0 +1,121 @@
+{
+  "file": "F04.hdf",
+  "sha256": "9de532eedb1196b3a6cd019986064bd53910f338d15cb449286532ade352dc82",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "first",
+      "dtype": 22,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "row",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "column",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 1,
+      "name": "row",
+      "dtype": 22,
+      "shape": [
+        3
+      ],
+      "dimensions": [
+        {
+          "name": "row",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": true,
+      "expect": "values"
+    },
+    {
+      "index": 2,
+      "name": "column",
+      "dtype": 24,
+      "shape": [
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "column",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": true,
+      "expect": "values"
+    },
+    {
+      "index": 3,
+      "name": "second",
+      "dtype": 22,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "row",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "column",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 30
+    },
+    {
+      "index": 1,
+      "read": "ok",
+      "bytes": 6
+    },
+    {
+      "index": 2,
+      "read": "ok",
+      "bytes": 20
+    },
+    {
+      "index": 3,
+      "read": "ok",
+      "bytes": 30
+    }
+  ]
+}

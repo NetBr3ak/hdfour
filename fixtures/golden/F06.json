@@ -1,0 +1,73 @@
+{
+  "file": "F06.hdf",
+  "sha256": "2c7f3474c32ce85fc3c1484c0ce81bfaeb75d56424cd197dcd131777c29cca2a",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "compressed",
+      "dtype": 24,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 1,
+      "name": "compressed",
+      "dtype": 24,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim2",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim3",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 60
+    },
+    {
+      "index": 1,
+      "read": "ok",
+      "bytes": 60
+    }
+  ]
+}

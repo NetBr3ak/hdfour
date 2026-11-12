@@ -1,0 +1,321 @@
+{
+  "file": "F02.hdf",
+  "sha256": "295f2b6e9bfe686a85213b1299a6210075c43d6d94b51dd1e99f75d01b004fbd",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "i8",
+      "dtype": 20,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 1,
+      "name": "u8",
+      "dtype": 21,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim2",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim3",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 2,
+      "name": "i16",
+      "dtype": 22,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim4",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim5",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 3,
+      "name": "u16",
+      "dtype": 23,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim6",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim7",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 4,
+      "name": "i32",
+      "dtype": 24,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim8",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim9",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 5,
+      "name": "u32",
+      "dtype": 25,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim10",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim11",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 6,
+      "name": "f32",
+      "dtype": 5,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim12",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim13",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 7,
+      "name": "f64",
+      "dtype": 6,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim14",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim15",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 8,
+      "name": "char8",
+      "dtype": 4,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim16",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim17",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 9,
+      "name": "uchar8",
+      "dtype": 3,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim18",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim19",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 15
+    },
+    {
+      "index": 1,
+      "read": "ok",
+      "bytes": 15
+    },
+    {
+      "index": 2,
+      "read": "ok",
+      "bytes": 30
+    },
+    {
+      "index": 3,
+      "read": "ok",
+      "bytes": 30
+    },
+    {
+      "index": 4,
+      "read": "ok",
+      "bytes": 60
+    },
+    {
+      "index": 5,
+      "read": "ok",
+      "bytes": 60
+    },
+    {
+      "index": 6,
+      "read": "ok",
+      "bytes": 60
+    },
+    {
+      "index": 7,
+      "read": "ok",
+      "bytes": 120
+    },
+    {
+      "index": 8,
+      "read": "ok",
+      "bytes": 15
+    },
+    {
+      "index": 9,
+      "read": "ok",
+      "bytes": 15
+    }
+  ]
+}

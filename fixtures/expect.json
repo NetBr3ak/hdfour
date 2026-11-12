@@ -1,0 +1,101 @@
+{
+  "F01": {"skipped": []},
+  "F02": {"skipped": []},
+  "F03": {"skipped": []},
+  "F04": {"skipped": []},
+  "F05": {"skipped": []},
+  "F06": {"skipped": []},
+  "F07": {"skipped": []},
+  "F08": {"skipped": []},
+  "F09": {"skipped": []},
+  "F10": {"datasets": {"0": "unsupported:skipping-huffman"}, "skipped": []},
+  "F11": {"datasets": {"0": "unsupported:nbit"}, "skipped": []},
+  "F12": {"datasets": {"0": "unsupported:external-element"}, "skipped": []},
+  "F13": {"skipped": []},
+  "F14": {"datasets": {"0": "skipped:legacy-sd-layout", "1": "skipped:legacy-sd-layout", "2": "skipped:legacy-sd-layout"}, "skipped": [{"object": "NDG 2", "feature": "legacy-sd-layout"}]},
+  "F15": {
+    "skipped": [],
+    "eos": {
+      "grids": [{"name": "TinyGrid", "dims": [["XDim", 5], ["YDim", 3]],
+        "fields": [{"name": "temperature", "dims": ["YDim", "XDim"], "geolocation": false, "dataset": 0}],
+        "dimension_maps": [],
+        "params": [["GridName", "\"TinyGrid\""], ["XDim", "5"], ["YDim", "3"],
+          ["UpperLeftPointMtrs", "(0.000000,3000000.000000)"], ["LowerRightMtrs", "(5000000.000000,0.000000)"],
+          ["Projection", "GCTP_GEO"], ["SphereCode", "12"]]}],
+      "swaths": []
+    }
+  },
+  "F16": {
+    "skipped": [
+      {"object": "TinySwath/Time", "feature": "vdata-field"},
+      {"object": "TinySwath/MergedA", "feature": "merged-field"},
+      {"object": "TinySwath/MergedB", "feature": "merged-field"},
+      {"object": "TinySwath/GeoTrack/XTrack", "feature": "index-dimension-map"}
+    ],
+    "eos": {
+      "grids": [],
+      "swaths": [{"name": "TinySwath", "dims": [["GeoTrack", 3], ["DataTrack", 3], ["XTrack", 5]],
+        "fields": [
+          {"name": "Latitude", "dims": ["GeoTrack", "XTrack"], "geolocation": true, "dataset": 0},
+          {"name": "signal", "dims": ["DataTrack", "XTrack"], "geolocation": false, "dataset": 1}
+        ],
+        "dimension_maps": [{"geo_dim": "GeoTrack", "data_dim": "DataTrack", "offset": -1, "increment": 2}],
+        "params": [["SwathName", "\"TinySwath\""]]}]
+    }
+  },
+  "F17": {"skipped": []},
+  "F18": {
+    "skipped": [],
+    "eos": {
+      "grids": [{"name": "TinyGrid", "dims": [["XDim", 5], ["YDim", 3]],
+        "fields": [{"name": "temperature", "dims": ["YDim", "XDim"], "geolocation": false, "dataset": 0}],
+        "dimension_maps": [],
+        "params": [["GridName", "\"TinyGrid\""], ["XDim", "5"], ["YDim", "3"],
+          ["UpperLeftPointMtrs", "(0.000000,3000000.000000)"], ["LowerRightMtrs", "(5000000.000000,0.000000)"],
+          ["Projection", "GCTP_GEO"], ["SphereCode", "12"]]}],
+      "swaths": []
+    }
+  },
+  "F19": {"skipped": []},
+  "F20": {"skipped": []},
+  "F21": {"datasets": {"0": "malformed"}, "skipped": []},
+  "R01": {
+    "skipped": [],
+    "eos": {
+      "grids": [{"name": "MODIS_Grid_16DAY_1km_VI", "dims": [["XDim", 219], ["YDim", 185]],
+        "fields": [
+          {"name": "1 km 16 days NDVI", "dims": ["YDim", "XDim"], "geolocation": false, "dataset": 0},
+          {"name": "1 km 16 days VI Quality", "dims": ["YDim", "XDim"], "geolocation": false, "dataset": 1},
+          {"name": "1 km 16 days pixel reliability", "dims": ["YDim", "XDim"], "geolocation": false, "dataset": 2}
+        ],
+        "dimension_maps": [],
+        "params": [["GridName", "\"MODIS_Grid_16DAY_1km_VI\""], ["XDim", "219"], ["YDim", "185"],
+          ["UpperLeftPointMtrs", "(670117.907295,5608858.446491)"],
+          ["LowerRightMtrs", "(873048.877134,5437432.741376)"], ["Projection", "GCTP_SNSOID"],
+          ["ProjParams", "(6371007.181000,0,0,0,0,0,0,0,0,0,0,0,0)"], ["SphereCode", "-1"], ["GridOrigin", "HDFE_GD_UL"]]}],
+      "swaths": []
+    }
+  },
+  "R02": {
+    "datasets": {
+      "0": "skipped:legacy-sd-layout", "1": "skipped:legacy-sd-layout", "2": "skipped:legacy-sd-layout",
+      "3": "skipped:legacy-sd-layout", "4": "skipped:legacy-sd-layout", "5": "skipped:legacy-sd-layout",
+      "6": "skipped:legacy-sd-layout", "7": "skipped:legacy-sd-layout", "8": "skipped:legacy-sd-layout",
+      "9": "skipped:legacy-sd-layout", "10": "skipped:legacy-sd-layout", "11": "skipped:legacy-sd-layout",
+      "12": "skipped:legacy-sd-layout", "13": "skipped:legacy-sd-layout", "14": "skipped:legacy-sd-layout",
+      "15": "skipped:legacy-sd-layout", "16": "skipped:legacy-sd-layout", "17": "skipped:legacy-sd-layout",
+      "18": "skipped:legacy-sd-layout", "19": "skipped:legacy-sd-layout", "20": "skipped:legacy-sd-layout",
+      "21": "skipped:legacy-sd-layout", "22": "skipped:legacy-sd-layout", "23": "skipped:legacy-sd-layout"
+    },
+    "skipped": [
+      {"object": "NDG 2", "feature": "legacy-sd-layout"}, {"object": "NDG 3", "feature": "legacy-sd-layout"},
+      {"object": "NDG 4", "feature": "legacy-sd-layout"}, {"object": "NDG 5", "feature": "legacy-sd-layout"},
+      {"object": "NDG 6", "feature": "legacy-sd-layout"}, {"object": "NDG 7", "feature": "legacy-sd-layout"},
+      {"object": "NDG 8", "feature": "legacy-sd-layout"}, {"object": "NDG 9", "feature": "legacy-sd-layout"}
+    ]
+  },
+  "R03": {"datasets": {"0": "unsupported:szip"}, "skipped": []},
+  "R04a": {"skipped": []},
+  "R04b": {"skipped": []},
+  "R04c": {"skipped": []}
+}
