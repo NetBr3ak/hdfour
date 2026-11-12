@@ -72,7 +72,7 @@ fn linked_header(source: &dyn Source, index: &Index, descriptor: &Descriptor) ->
             "element reader requires plain or linked storage",
         ));
     }
-    let parsed = special::parse(&bytes).map_err(|error| match error {
+    let parsed = special::parse(&bytes, index.limits()).map_err(|error| match error {
         Error::Malformed { what, .. } => malformed(descriptor, what),
         other => other,
     })?;
@@ -362,22 +362,87 @@ mod tests {
     }
 
     #[test]
+    fn sq6_zero_block_length_reads_first_block_and_rejects_short_storage() {
+        for length in [3, 4] {
+            let source = image(&[
+                (0x42be, 1, linked(length, 0, 2, 100)),
+                (20, 100, vec![0, 0, 0, 1, 0, 2]),
+                (20, 1, b"abc".to_vec()),
+                (20, 2, b"ignored".to_vec()),
+            ]);
+            let index = dd::parse(&source, &Limits::default()).expect("index");
+            let descriptor = index.get(702, 1).expect("linked descriptor");
+            assert_eq!(
+                len(&source, &index, descriptor).expect("logical length"),
+                u64::from(length)
+            );
+            let mut bytes = vec![0; usize::try_from(length).expect("length")];
+            let result = read(&source, &index, descriptor, &mut bytes);
+            if length == 3 {
+                result.expect("first block supplies all data");
+                assert_eq!(&bytes, b"abc");
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(Error::Malformed {
+                        what: "linked element ends before the requested data",
+                        ..
+                    })
+                ));
+            }
+        }
+        let source = image(&[(0x42be, 1, linked(0, 0, 0, 0))]);
+        let index = dd::parse(&source, &Limits::default()).expect("index");
+        assert!(matches!(
+            len(&source, &index, index.get(702, 1).expect("DD")),
+            Err(Error::Malformed { .. })
+        ));
+    }
+
+    #[test]
     fn non_linked_specials_are_malformed_for_element_reads() {
-        for payload in [
-            vec![0, 2],
-            vec![0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            vec![0, 5],
-        ] {
+        // hextelt.c:474-496 includes all three i32 fields and the external file name.
+        let mut external = 2_u16.to_be_bytes().to_vec();
+        external.extend(0_u32.to_be_bytes());
+        external.extend(0_u32.to_be_bytes());
+        external.extend(8_u32.to_be_bytes());
+        external.extend(b"data.bin");
+        let compressed = vec![0, 3, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 4, 0, 6];
+        let mut body = vec![0];
+        for value in [0_u32, 1, 1, 1] {
+            body.extend(value.to_be_bytes());
+        }
+        body.extend(1962_u16.to_be_bytes());
+        body.extend(1_u16.to_be_bytes());
+        body.extend([0; 4]);
+        for value in [1_u32, 0, 1, 1, 1] {
+            body.extend(value.to_be_bytes());
+        }
+        body.push(0);
+        let mut chunked = 5_u16.to_be_bytes().to_vec();
+        chunked.extend(
+            u32::try_from(body.len())
+                .expect("body length")
+                .to_be_bytes(),
+        );
+        chunked.extend(body);
+        for payload in [external, compressed, chunked] {
             let source = image(&[(0x42be, 1, payload)]);
             let index = dd::parse(&source, &Limits::default()).expect("index");
             let descriptor = index.get(702, 1).expect("special DD");
             assert!(matches!(
                 len(&source, &index, descriptor),
-                Err(Error::Malformed { .. })
+                Err(Error::Malformed {
+                    what: "element reader requires plain or linked storage",
+                    ..
+                })
             ));
             assert!(matches!(
                 read(&source, &index, descriptor, &mut []),
-                Err(Error::Malformed { .. })
+                Err(Error::Malformed {
+                    what: "element reader requires plain or linked storage",
+                    ..
+                })
             ));
         }
     }

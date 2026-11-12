@@ -453,9 +453,9 @@ impl Catalog<'_, '_> {
             text.extend(bytes.iter().map(|byte| char::from(*byte)));
         }
         check_odl_depth(&text, self.reader.limits().max_group_depth)?;
-        let document = odl::parse(&text)?;
+        let document = odl::parse(&text, self.reader.limits())?;
         check_eos_ranks(&document, self.reader.limits().max_rank)?;
-        let (mut eos, skipped) = eos::from_struct_metadata(&text)?;
+        let (mut eos, skipped) = eos::from_struct_metadata(&text, self.reader.limits())?;
         for (objects, class) in [(&mut eos.grids, "GRID"), (&mut eos.swaths, "SWATH")] {
             for object in objects {
                 restore_parameters(object, &document, class)?;
@@ -648,13 +648,7 @@ fn check_odl_depth(text: &str, max: u64) -> Result<()> {
 }
 
 fn skip_odl_string(characters: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<()> {
-    while let Some(character) = characters.next() {
-        if character == '\\' {
-            characters
-                .next()
-                .ok_or_else(|| malformed("truncated ODL escape"))?;
-            continue;
-        }
+    for character in characters.by_ref() {
         if character == '"' {
             return Ok(());
         }
@@ -679,9 +673,15 @@ mod tests {
     use crate::{ByteOrder, Codec, DType, Limits, Memory, Storage};
 
     #[test]
+    fn sq6_odl_preflight_preserves_literal_backslashes() -> Result<()> {
+        check_odl_depth(r#"GROUP=A Text="trailing\" END_GROUP=A END"#, 1)?;
+        Ok(())
+    }
+
+    #[test]
     fn odl_depth_preflight_checks_nesting_not_strings_or_comments() -> Result<()> {
         check_odl_depth(
-            r#"GROUP=A Text="GROUP=ignored ( \" OBJECT=ignored" /* GROUP=ignored ( */ END_GROUP=A END"#,
+            r#"GROUP=A Text="GROUP=ignored ( \ OBJECT=ignored" /* GROUP=ignored ( */ END_GROUP=A END"#,
             1,
         )?;
         assert!(matches!(
@@ -764,6 +764,7 @@ mod tests {
         assert_eq!(object.fields.first().expect("field").dataset, Some(1));
         let document = odl::parse(
             "GROUP=Grid GridName=\"Shared\" Kind=grid END_GROUP=Grid GROUP=Swath SwathName=\"Shared\" Kind=swath END_GROUP=Swath END",
+            &Limits::default(),
         )?;
         restore_parameters(&mut object, &document, "SWATH")?;
         assert_eq!(
