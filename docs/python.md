@@ -54,7 +54,8 @@ Two datasets can share a name. Select them by position in `file.datasets`.
 | `read()` | The whole array as a NumPy array |
 
 `read()` returns raw values in C order and native byte order. It does not apply
-scale, offset or fill values. `char8` gives `int8` and `uchar8` gives `uint8`.
+scale or offset and does not mask fill values; data that was never written reads
+as the fill value. `char8` gives `int8` and `uchar8` gives `uint8`.
 The binding releases the global interpreter lock while it decodes.
 
 ## `Dimension`

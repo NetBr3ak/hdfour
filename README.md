@@ -9,8 +9,9 @@ This is a development target. [Tests](#tests) lists what the tests check today.
 
 hdfour is an independent project. It is not affiliated with, endorsed by or supported by The HDF Group or NASA. HDF is a trade mark of The HDF Group.
 
-The reader is read-only. It returns raw stored values. It does not apply scale,
-offset or fill values.
+The reader is read-only. It returns raw stored values: it does not apply scale
+or offset and does not mask fill values. Data that was never written reads as
+the fill value.
 
 ## Install
 
@@ -50,7 +51,7 @@ The script writes the module and its JavaScript glue to `demo/pkg/`.
 
 ## Examples
 
-Each example reads the committed fixture `fixtures/F01.hdf`.
+The Rust and Python examples read the committed fixture `fixtures/F01.hdf`.
 
 Rust:
 
@@ -112,7 +113,8 @@ The reader handles:
 Some features stop `read`. It returns an `Unsupported` error
 with one of these feature names: `szip`, `nbit`, `skipping-huffman`, `jpeg`,
 `imcomp`, `codec` (any other compression code), `external-element` and
-`fill-type-mismatch`.
+`fill-type-mismatch`. A chunked dataset whose chunk table uses an unsupported
+layout or type gives `vdata-interlace` or `number-type`.
 
 Other features do not stop `open`. The reader leaves the object out and lists it
 in `skipped()` with one of these names: `number-type`, `ragged-array`,
@@ -178,8 +180,9 @@ Results will be added after the first measured run. The method is in
 
 `sh scripts/check.sh` runs `cargo fmt --check`, Clippy with warnings as errors,
 `cargo test` for the workspace without the Python crate, `cargo doc` with
-warnings as errors, and Ruff. It also checks that each parsing module keeps its
-no-panic lint list and that no crate has handwritten `unsafe` code.
+warnings as errors, and Ruff. It also checks that each parsing module still names
+the `clippy::indexing_slicing` lint and that no crate has handwritten `unsafe`
+code.
 
 The Rust golden tests open the fixtures F01 to F21 and the committed corpus files
 R02 and R03. They compare metadata, refusals and skipped objects with the
@@ -195,12 +198,13 @@ a locked environment. See [fixtures/README.md](fixtures/README.md) and
 
 Other tests:
 
-- Python: `maturin develop && pytest -q python/tests`. This includes a
-  comparison with pyhdf.
+- Python: `pip install pytest==9.0.2 pyhdf==0.11.7`, then
+  `maturin develop && pytest -q python/tests`. This includes a comparison with
+  pyhdf.
 - WebAssembly: `node demo/smoke.mjs` after `sh demo/build.sh`.
 - Fuzzing: four cargo-fuzz targets, `open_read_all`, `codec_deflate`,
-  `codec_rle` and `odl`. Run them with `sh fuzz/run.sh`. See
-  [fuzz/README.md](fuzz/README.md).
+  `codec_rle` and `odl`. They need the pinned nightly toolchain and cargo-fuzz.
+  Run them with `sh fuzz/run.sh`. See [fuzz/README.md](fuzz/README.md).
 
 ## Credits
 
