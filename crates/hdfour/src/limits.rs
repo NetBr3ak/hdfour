@@ -9,6 +9,7 @@ pub struct Limits {
     pub max_rank: u64,
     pub max_array_bytes: u64,
     pub max_attribute_bytes: u64,
+    pub max_metadata_bytes: u64,
     pub max_chunks: u64,
     pub max_chunk_header_bytes: u64,
 }
@@ -22,6 +23,7 @@ impl Default for Limits {
             max_rank: 32,
             max_array_bytes: 2_147_483_648,
             max_attribute_bytes: 67_108_864,
+            max_metadata_bytes: 67_108_864,
             max_chunks: 1_048_576,
             max_chunk_header_bytes: 256,
         }
@@ -31,6 +33,11 @@ impl Default for Limits {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sq7_metadata_budget_defaults_to_64_mib() {
+        assert_eq!(Limits::default().max_metadata_bytes, 67_108_864);
+    }
 
     #[test]
     fn specification_defaults() {

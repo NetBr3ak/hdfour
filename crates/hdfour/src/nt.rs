@@ -57,22 +57,28 @@ pub fn decode(dtype: DType, order: ByteOrder, bytes: &[u8]) -> Result<Value> {
         return Err(malformed("partial number-type value"));
     }
     Ok(match dtype {
-        DType::Char8 => Value::Char8(bytes.to_vec()),
-        DType::UChar8 => Value::UChar8(bytes.to_vec()),
-        DType::I8 => Value::I8(decode_values(&order, bytes)),
-        DType::U8 => Value::U8(bytes.to_vec()),
-        DType::I16 => Value::I16(decode_values(&order, bytes)),
-        DType::U16 => Value::U16(decode_values(&order, bytes)),
-        DType::I32 => Value::I32(decode_values(&order, bytes)),
-        DType::U32 => Value::U32(decode_values(&order, bytes)),
-        DType::F32 => Value::F32(decode_values(&order, bytes)),
-        DType::F64 => Value::F64(decode_values(&order, bytes)),
+        DType::Char8 => Value::Char8(copy_bytes(bytes)?),
+        DType::UChar8 => Value::UChar8(copy_bytes(bytes)?),
+        DType::I8 => Value::I8(decode_values(&order, bytes)?),
+        DType::U8 => Value::U8(copy_bytes(bytes)?),
+        DType::I16 => Value::I16(decode_values(&order, bytes)?),
+        DType::U16 => Value::U16(decode_values(&order, bytes)?),
+        DType::I32 => Value::I32(decode_values(&order, bytes)?),
+        DType::U32 => Value::U32(decode_values(&order, bytes)?),
+        DType::F32 => Value::F32(decode_values(&order, bytes)?),
+        DType::F64 => Value::F64(decode_values(&order, bytes)?),
     })
 }
 
-fn decode_values<T: bytemuck::Pod + Default>(order: &ByteOrder, bytes: &[u8]) -> Vec<T> {
+fn copy_bytes(bytes: &[u8]) -> Result<Vec<u8>> {
+    let mut output = crate::read::buffer(bytes.len())?;
+    output.copy_from_slice(bytes);
+    Ok(output)
+}
+
+fn decode_values<T: bytemuck::Pod + Default>(order: &ByteOrder, bytes: &[u8]) -> Result<Vec<T>> {
     let width = std::mem::size_of::<T>();
-    let mut values = vec![T::default(); bytes.chunks_exact(width).len()];
+    let mut values = crate::read::buffer(bytes.chunks_exact(width).len())?;
     let output = bytemuck::must_cast_slice_mut::<T, u8>(&mut values);
     output.copy_from_slice(bytes);
     let native_order = match order {
@@ -82,7 +88,7 @@ fn decode_values<T: bytemuck::Pod + Default>(order: &ByteOrder, bytes: &[u8]) ->
     if !native_order {
         swap_in_place(output, width);
     }
-    values
+    Ok(values)
 }
 
 /// Reverse each complete value; zero width is a no-op and trailing bytes are untouched.

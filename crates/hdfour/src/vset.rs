@@ -8,6 +8,7 @@
     clippy::panic
 )]
 
+use crate::metadata::Budget;
 use crate::{Error, Result, Value, nt};
 
 /// A Vgroup's ordered children and attribute Vdata references.
@@ -54,7 +55,11 @@ pub struct VdataHeader {
 /// Parse a version 3 or 4 Vgroup, preserving child and attribute order.
 /// Names and classes use a byte-preserving Latin-1 mapping.
 pub fn parse_vgroup(bytes: &[u8]) -> Result<Vgroup> {
-    let (mut input, version, _) = record(bytes)?;
+    parse_vgroup_with_budget(bytes, None)
+}
+
+pub(crate) fn parse_vgroup_with_budget(bytes: &[u8], budget: Option<&Budget>) -> Result<Vgroup> {
+    let (mut input, version, _) = record(bytes, budget)?;
     if !matches!(version, 3 | 4) {
         return Err(input.error("Vgroup version must be 3 or 4"));
     }
@@ -62,7 +67,8 @@ pub fn parse_vgroup(bytes: &[u8]) -> Result<Vgroup> {
     let count = usize::from(input.word()?);
     let tags = input.words(count)?;
     let references = input.words(count)?;
-    let members = tags.into_iter().zip(references).collect();
+    let mut members = input.reserve_items(count)?;
+    members.extend(tags.into_iter().zip(references));
     let name = input.name(u16::MAX)?;
     let class = input.name(u16::MAX)?;
     input.take(4)?;
@@ -70,6 +76,7 @@ pub fn parse_vgroup(bytes: &[u8]) -> Result<Vgroup> {
     if version == 4 && input.dword()? & 1 != 0 {
         let count = input.count()?;
         input.require_entries(count, 4)?;
+        attributes = input.reserve_items(count)?;
         for _ in 0..count {
             attributes.push((input.word()?, input.word()?));
         }
@@ -87,15 +94,23 @@ pub fn parse_vgroup(bytes: &[u8]) -> Result<Vgroup> {
 /// Parse a version 2, 3 or 4 Vdata header without decoding its field types.
 /// Names and classes use a byte-preserving Latin-1 mapping.
 pub fn parse_vdata_header(bytes: &[u8]) -> Result<VdataHeader> {
-    let (mut input, version, more) = record(bytes)?;
+    let header = parse_vdata_header_for_sd(bytes, None)?;
+    if header.interlace != 0 {
+        return Err(malformed("Vdata must use full interlace"));
+    }
+    Ok(header)
+}
+
+pub(crate) fn parse_vdata_header_for_sd(
+    bytes: &[u8],
+    budget: Option<&Budget>,
+) -> Result<VdataHeader> {
+    let (mut input, version, more) = record(bytes, budget)?;
     if !(2..=4).contains(&version) {
         return Err(input.error("Vdata version must be 2, 3 or 4"));
     }
     // vio.c:475-572 stores type, size, offset and order as separate arrays.
     let interlace = input.word()?;
-    if interlace != 0 {
-        return Err(input.error("Vdata must use full interlace"));
-    }
     let records = input.dword()?;
     if records > i32::MAX as u32 {
         return Err(input.error("negative Vdata record count"));
@@ -111,7 +126,7 @@ pub fn parse_vdata_header(bytes: &[u8]) -> Result<VdataHeader> {
     let sizes = input.words(count)?;
     let offsets = input.words(count)?;
     let orders = input.words(count)?;
-    let mut fields = Vec::with_capacity(count);
+    let mut fields = input.reserve_items(count)?;
     for (((type_code, size), offset), order) in
         types.into_iter().zip(sizes).zip(offsets).zip(orders)
     {
@@ -139,6 +154,7 @@ pub fn parse_vdata_header(bytes: &[u8]) -> Result<VdataHeader> {
     if version == 4 && input.dword()? & 1 != 0 {
         let count = input.count()?;
         input.require_entries(count, 8)?;
+        attributes = input.reserve_items(count)?;
         for _ in 0..count {
             let field = i32::from_be_bytes(input.array()?);
             if field < -1
@@ -199,7 +215,11 @@ pub fn field_values(header: &VdataHeader, bytes: &[u8], field: usize) -> Result<
         .ok()
         .and_then(|records| records.checked_mul(width))
         .ok_or_else(|| malformed("Vdata field length overflow"))?;
-    let mut selected = Vec::with_capacity(capacity);
+    crate::read::allocation_size(capacity as u64)?;
+    let mut selected = Vec::new();
+    selected
+        .try_reserve_exact(capacity)
+        .map_err(|_| crate::read::allocation_error(capacity as u64))?;
     // DS 7.6: full interlace repeats the complete record, not each field's column.
     for record in bytes.chunks_exact(usize::from(header.record_size)) {
         selected.extend_from_slice(
@@ -224,6 +244,18 @@ fn field_range(field: &VdataField, record_size: u16) -> Result<std::ops::Range<u
     Ok(start..end)
 }
 
+fn reserve<T>(count: usize) -> Result<Vec<T>> {
+    let bytes = count
+        .checked_mul(std::mem::size_of::<T>())
+        .ok_or_else(|| crate::read::allocation_error(u64::MAX))?;
+    crate::read::allocation_size(bytes as u64)?;
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(count)
+        .map_err(|_| crate::read::allocation_error(bytes as u64))?;
+    Ok(values)
+}
+
 fn modern_type(code: u16) -> u16 {
     // vconv.c:428-457 maps the complete old code; other codes pass through.
     match code {
@@ -237,7 +269,7 @@ fn modern_type(code: u16) -> u16 {
     }
 }
 
-fn record(bytes: &[u8]) -> Result<(Cursor<'_>, u16, u16)> {
+fn record<'a>(bytes: &'a [u8], budget: Option<&'a Budget>) -> Result<(Cursor<'a>, u16, u16)> {
     // vgp.c:1045-1053 and vio.c:455-470 retain the historical extra byte.
     let end = bytes
         .len()
@@ -252,6 +284,7 @@ fn record(bytes: &[u8]) -> Result<(Cursor<'_>, u16, u16)> {
     let mut trailer = Cursor {
         bytes,
         position: end,
+        budget,
     };
     let version = trailer.word()?;
     let more = trailer.word()?;
@@ -259,6 +292,7 @@ fn record(bytes: &[u8]) -> Result<(Cursor<'_>, u16, u16)> {
         Cursor {
             bytes: body,
             position: 0,
+            budget,
         },
         version,
         more,
@@ -268,6 +302,7 @@ fn record(bytes: &[u8]) -> Result<(Cursor<'_>, u16, u16)> {
 struct Cursor<'a> {
     bytes: &'a [u8],
     position: usize,
+    budget: Option<&'a Budget>,
 }
 
 impl<'a> Cursor<'a> {
@@ -315,7 +350,18 @@ impl<'a> Cursor<'a> {
 
     fn words(&mut self, count: usize) -> Result<Vec<u16>> {
         self.require_entries(count, 2)?;
-        (0..count).map(|_| self.word()).collect()
+        let mut values = reserve(count)?;
+        for _ in 0..count {
+            values.push(self.word()?);
+        }
+        Ok(values)
+    }
+
+    fn reserve_items<T>(&self, count: usize) -> Result<Vec<T>> {
+        if let Some(budget) = self.budget {
+            budget.items::<T>(count)?;
+        }
+        reserve(count)
     }
 
     fn name(&mut self, max: u16) -> Result<String> {
@@ -323,11 +369,21 @@ impl<'a> Cursor<'a> {
         if length > max {
             return Err(self.error("negative Vdata name length"));
         }
-        Ok(self
-            .take(usize::from(length))?
-            .iter()
-            .map(|byte| char::from(*byte))
-            .collect())
+        let bytes = self.take(usize::from(length))?;
+        if let Some(budget) = self.budget {
+            return budget.latin1(bytes);
+        }
+        let length = bytes.iter().try_fold(0_usize, |length, byte| {
+            length
+                .checked_add(char::from(*byte).len_utf8())
+                .ok_or_else(|| self.error("Vset name length overflow"))
+        })?;
+        crate::read::allocation_size(length as u64)?;
+        let mut name = String::new();
+        name.try_reserve_exact(length)
+            .map_err(|_| crate::read::allocation_error(length as u64))?;
+        name.extend(bytes.iter().map(|byte| char::from(*byte)));
+        Ok(name)
     }
 
     fn remaining(&self) -> Result<&'a [u8]> {
@@ -434,6 +490,54 @@ mod tests {
 
     fn malformed<T>(result: Result<T>) {
         assert!(matches!(result, Err(Error::Malformed { .. })));
+    }
+
+    #[test]
+    fn sq13_vset_reservations_reject_capacity_overflow() {
+        for result in [
+            reserve::<(u16, u16)>(usize::MAX).map(|_| ()),
+            reserve::<(i32, u16, u16)>(usize::MAX).map(|_| ()),
+            reserve::<(u16, u16)>(isize::MAX as usize / 4 + 1).map(|_| ()),
+            reserve::<(i32, u16, u16)>(isize::MAX as usize / 8 + 1).map(|_| ()),
+        ] {
+            assert!(matches!(
+                result,
+                Err(Error::LimitExceeded {
+                    limit: "allocation_bytes",
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn sq13_v4_attribute_counts_are_preserved() -> Result<()> {
+        let count = 257_u32;
+        let mut group = group(4);
+        group.truncate(group.len() - 17);
+        group.extend(count.to_be_bytes());
+        for reference in 0..count {
+            word(&mut group, 1962);
+            word(&mut group, u16::try_from(reference).expect("reference"));
+        }
+        trailer(&mut group, 4);
+        let group = parse_vgroup(&group)?;
+        assert_eq!(group.attributes.len(), count as usize);
+        assert_eq!(group.attributes.last(), Some(&(1962, 256)));
+
+        let mut header = header(4, 22);
+        header.truncate(header.len() - 25);
+        header.extend(count.to_be_bytes());
+        for reference in 0..count {
+            header.extend((-1_i32).to_be_bytes());
+            word(&mut header, 1962);
+            word(&mut header, u16::try_from(reference).expect("reference"));
+        }
+        trailer(&mut header, 4);
+        let header = parse_vdata_header(&header)?;
+        assert_eq!(header.attributes.len(), count as usize);
+        assert_eq!(header.attributes.last(), Some(&(-1, 1962, 256)));
+        Ok(())
     }
 
     #[test]
