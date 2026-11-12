@@ -30,7 +30,7 @@ impl File {
         let limits = Limits {
             max_array_bytes: MAX_BROWSER_BYTES,
             max_attribute_bytes: 1_048_576,
-            // Set max_metadata_bytes to 16_777_216 when the core exposes it (SQ9 W1).
+            max_metadata_bytes: 16_777_216,
             ..Limits::default()
         };
         Ok(Self {
