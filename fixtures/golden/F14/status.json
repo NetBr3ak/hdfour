@@ -1,0 +1,5 @@
+[
+  {"index": 0, "read": "ok", "bytes": 6},
+  {"index": 1, "read": "ok", "bytes": 10},
+  {"index": 2, "read": "ok", "bytes": 30}
+]

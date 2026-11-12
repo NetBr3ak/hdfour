@@ -1,0 +1,42 @@
+{
+  "file": "F10.hdf",
+  "sha256": "d1ab65788e73498207d932f547ba7a026f807023fc4fbd1fd98d117b02a61a2b",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "compressed",
+      "dtype": 24,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "unsupported:skipping-huffman"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 60
+    }
+  ]
+}

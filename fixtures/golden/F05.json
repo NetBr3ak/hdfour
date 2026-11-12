@@ -1,0 +1,42 @@
+{
+  "file": "F05.hdf",
+  "sha256": "23239a2de6f5142b6d6916bd7ac943f785301c628b9085a52dc7e3e66fa5bf16",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "records",
+      "dtype": 22,
+      "shape": [
+        5,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 5,
+          "unlimited": true,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 50
+    }
+  ]
+}

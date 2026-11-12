@@ -1,0 +1,42 @@
+{
+  "file": "F11.hdf",
+  "sha256": "a7eb067e883dff311edf1a8197195adf5db397dad51dbf1a4efc80e913f48696",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "nbit",
+      "dtype": 22,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "unsupported:nbit"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 30
+    }
+  ]
+}

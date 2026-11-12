@@ -1,0 +1,49 @@
+{
+  "file": "F19.hdf",
+  "sha256": "8c0577c78906df694d15e2729b08ef7837d0331af1345bf467420cf5136493e9",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "chunks",
+      "dtype": 22,
+      "shape": [
+        5,
+        7
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 7,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [
+        {
+          "name": "_FillValue",
+          "dtype": 22,
+          "count": 1,
+          "hex": "c7cf"
+        }
+      ],
+      "is_coordinate": false,
+      "expect": "values"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 70
+    }
+  ]
+}

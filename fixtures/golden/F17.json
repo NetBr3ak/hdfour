@@ -1,0 +1,42 @@
+{
+  "file": "F17.hdf",
+  "sha256": "507b51ee022a616ef51d5c72ad841d6778e74dee32ac770957cf3284221a893a",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "v4",
+      "dtype": 22,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "values"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 30
+    }
+  ]
+}

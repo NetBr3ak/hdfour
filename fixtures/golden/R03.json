@@ -1,0 +1,42 @@
+{
+  "file": "R03.hdf",
+  "sha256": "50b87a1b2566f3bdded31b9747e38e60643bdc7629d29fb58c2156ccb4841cfa",
+  "attributes": [],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "TwoDimsInt32",
+      "dtype": 24,
+      "shape": [
+        16,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 16,
+          "unlimited": false,
+          "attributes": []
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [],
+      "is_coordinate": false,
+      "expect": "unsupported:szip"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "fail",
+      "bytes": 320
+    }
+  ]
+}

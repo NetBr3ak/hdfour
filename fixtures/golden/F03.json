@@ -1,0 +1,383 @@
+{
+  "file": "F03.hdf",
+  "sha256": "ab7bf941b2940b2ff6a51c853352f7d67d4f9f8377bfd495e88c4c96901d06d6",
+  "attributes": [
+    {
+      "name": "i8",
+      "dtype": 20,
+      "count": 3,
+      "hex": "a5aaaf"
+    },
+    {
+      "name": "u8",
+      "dtype": 21,
+      "count": 3,
+      "hex": "898c8f"
+    },
+    {
+      "name": "i16",
+      "dtype": 22,
+      "count": 3,
+      "hex": "dd9ee49feba0"
+    },
+    {
+      "name": "u16",
+      "dtype": 23,
+      "count": 3,
+      "hex": "23812a823183"
+    },
+    {
+      "name": "i32",
+      "dtype": 24,
+      "count": 3,
+      "hex": "99badc9e9cbcdd9e9fbede9e"
+    },
+    {
+      "name": "u32",
+      "dtype": 25,
+      "count": 3,
+      "hex": "674523816a4724816d492581"
+    },
+    {
+      "name": "f32",
+      "dtype": 5,
+      "count": 3,
+      "hex": "0080f6c20040f0c20000eac2"
+    },
+    {
+      "name": "f64",
+      "dtype": 6,
+      "count": 3,
+      "hex": "00000000d21cf8c000000080c11cf8c000000000b11cf8c0"
+    },
+    {
+      "name": "char8",
+      "dtype": 4,
+      "count": 3,
+      "hex": "414243"
+    },
+    {
+      "name": "uchar8",
+      "dtype": 3,
+      "count": 1,
+      "hex": "89"
+    }
+  ],
+  "datasets": [
+    {
+      "index": 0,
+      "name": "attributes",
+      "dtype": 22,
+      "shape": [
+        3,
+        5
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": [
+            {
+              "name": "i8",
+              "dtype": 20,
+              "count": 3,
+              "hex": "a5aaaf"
+            },
+            {
+              "name": "u8",
+              "dtype": 21,
+              "count": 3,
+              "hex": "898c8f"
+            },
+            {
+              "name": "i16",
+              "dtype": 22,
+              "count": 3,
+              "hex": "dd9ee49feba0"
+            },
+            {
+              "name": "u16",
+              "dtype": 23,
+              "count": 3,
+              "hex": "23812a823183"
+            },
+            {
+              "name": "i32",
+              "dtype": 24,
+              "count": 3,
+              "hex": "99badc9e9cbcdd9e9fbede9e"
+            },
+            {
+              "name": "u32",
+              "dtype": 25,
+              "count": 3,
+              "hex": "674523816a4724816d492581"
+            },
+            {
+              "name": "f32",
+              "dtype": 5,
+              "count": 3,
+              "hex": "0080f6c20040f0c20000eac2"
+            },
+            {
+              "name": "f64",
+              "dtype": 6,
+              "count": 3,
+              "hex": "00000000d21cf8c000000080c11cf8c000000000b11cf8c0"
+            },
+            {
+              "name": "char8",
+              "dtype": 4,
+              "count": 3,
+              "hex": "414243"
+            },
+            {
+              "name": "uchar8",
+              "dtype": 3,
+              "count": 1,
+              "hex": "89"
+            }
+          ]
+        },
+        {
+          "name": "fakeDim1",
+          "size": 5,
+          "unlimited": false,
+          "attributes": []
+        }
+      ],
+      "attributes": [
+        {
+          "name": "i8",
+          "dtype": 20,
+          "count": 3,
+          "hex": "a5aaaf"
+        },
+        {
+          "name": "u8",
+          "dtype": 21,
+          "count": 3,
+          "hex": "898c8f"
+        },
+        {
+          "name": "i16",
+          "dtype": 22,
+          "count": 3,
+          "hex": "dd9ee49feba0"
+        },
+        {
+          "name": "u16",
+          "dtype": 23,
+          "count": 3,
+          "hex": "23812a823183"
+        },
+        {
+          "name": "i32",
+          "dtype": 24,
+          "count": 3,
+          "hex": "99badc9e9cbcdd9e9fbede9e"
+        },
+        {
+          "name": "u32",
+          "dtype": 25,
+          "count": 3,
+          "hex": "674523816a4724816d492581"
+        },
+        {
+          "name": "f32",
+          "dtype": 5,
+          "count": 3,
+          "hex": "0080f6c20040f0c20000eac2"
+        },
+        {
+          "name": "f64",
+          "dtype": 6,
+          "count": 3,
+          "hex": "00000000d21cf8c000000080c11cf8c000000000b11cf8c0"
+        },
+        {
+          "name": "char8",
+          "dtype": 4,
+          "count": 3,
+          "hex": "414243"
+        },
+        {
+          "name": "uchar8",
+          "dtype": 3,
+          "count": 1,
+          "hex": "89"
+        },
+        {
+          "name": "scale_factor",
+          "dtype": 6,
+          "count": 1,
+          "hex": "000000000000c03f"
+        },
+        {
+          "name": "_FillValue",
+          "dtype": 22,
+          "count": 1,
+          "hex": "c7cf"
+        }
+      ],
+      "is_coordinate": false,
+      "expect": "values"
+    },
+    {
+      "index": 1,
+      "name": "fakeDim0",
+      "dtype": 5,
+      "shape": [
+        3
+      ],
+      "dimensions": [
+        {
+          "name": "fakeDim0",
+          "size": 3,
+          "unlimited": false,
+          "attributes": [
+            {
+              "name": "i8",
+              "dtype": 20,
+              "count": 3,
+              "hex": "a5aaaf"
+            },
+            {
+              "name": "u8",
+              "dtype": 21,
+              "count": 3,
+              "hex": "898c8f"
+            },
+            {
+              "name": "i16",
+              "dtype": 22,
+              "count": 3,
+              "hex": "dd9ee49feba0"
+            },
+            {
+              "name": "u16",
+              "dtype": 23,
+              "count": 3,
+              "hex": "23812a823183"
+            },
+            {
+              "name": "i32",
+              "dtype": 24,
+              "count": 3,
+              "hex": "99badc9e9cbcdd9e9fbede9e"
+            },
+            {
+              "name": "u32",
+              "dtype": 25,
+              "count": 3,
+              "hex": "674523816a4724816d492581"
+            },
+            {
+              "name": "f32",
+              "dtype": 5,
+              "count": 3,
+              "hex": "0080f6c20040f0c20000eac2"
+            },
+            {
+              "name": "f64",
+              "dtype": 6,
+              "count": 3,
+              "hex": "00000000d21cf8c000000080c11cf8c000000000b11cf8c0"
+            },
+            {
+              "name": "char8",
+              "dtype": 4,
+              "count": 3,
+              "hex": "414243"
+            },
+            {
+              "name": "uchar8",
+              "dtype": 3,
+              "count": 1,
+              "hex": "89"
+            }
+          ]
+        }
+      ],
+      "attributes": [
+        {
+          "name": "i8",
+          "dtype": 20,
+          "count": 3,
+          "hex": "a5aaaf"
+        },
+        {
+          "name": "u8",
+          "dtype": 21,
+          "count": 3,
+          "hex": "898c8f"
+        },
+        {
+          "name": "i16",
+          "dtype": 22,
+          "count": 3,
+          "hex": "dd9ee49feba0"
+        },
+        {
+          "name": "u16",
+          "dtype": 23,
+          "count": 3,
+          "hex": "23812a823183"
+        },
+        {
+          "name": "i32",
+          "dtype": 24,
+          "count": 3,
+          "hex": "99badc9e9cbcdd9e9fbede9e"
+        },
+        {
+          "name": "u32",
+          "dtype": 25,
+          "count": 3,
+          "hex": "674523816a4724816d492581"
+        },
+        {
+          "name": "f32",
+          "dtype": 5,
+          "count": 3,
+          "hex": "0080f6c20040f0c20000eac2"
+        },
+        {
+          "name": "f64",
+          "dtype": 6,
+          "count": 3,
+          "hex": "00000000d21cf8c000000080c11cf8c000000000b11cf8c0"
+        },
+        {
+          "name": "char8",
+          "dtype": 4,
+          "count": 3,
+          "hex": "414243"
+        },
+        {
+          "name": "uchar8",
+          "dtype": 3,
+          "count": 1,
+          "hex": "89"
+        }
+      ],
+      "is_coordinate": true,
+      "expect": "values"
+    }
+  ],
+  "skipped": [],
+  "eos": null,
+  "c_reads": [
+    {
+      "index": 0,
+      "read": "ok",
+      "bytes": 30
+    },
+    {
+      "index": 1,
+      "read": "ok",
+      "bytes": 12
+    }
+  ]
+}
