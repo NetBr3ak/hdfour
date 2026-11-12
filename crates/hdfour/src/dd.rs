@@ -128,11 +128,17 @@ fn parse_descriptor(bytes: &[u8]) -> Result<Descriptor> {
         return Err(malformed(0, "truncated data descriptor"));
     };
     let offset = u32::from_be_bytes([o0, o1, o2, o3]);
+    let length = u32::from_be_bytes([l0, l1, l2, l3]);
     Ok(Descriptor {
         tag: u16::from_be_bytes([t0, t1]),
         reference: u16::from_be_bytes([r0, r1]),
         offset: (offset != u32::MAX).then_some(u64::from(offset)),
-        length: u64::from(u32::from_be_bytes([l0, l1, l2, l3])),
+        // hfile.c:3376-3378: two -1 sentinels mean no storage, not a 4 GiB element.
+        length: if offset == u32::MAX && length == u32::MAX {
+            0
+        } else {
+            u64::from(length)
+        },
     })
 }
 
@@ -182,6 +188,20 @@ fn malformed(offset: u64, what: &'static str) -> Error {
 mod tests {
     use super::*;
     use crate::Memory;
+
+    #[test]
+    fn c_written_unwritten_elements_have_two_sentinels() -> crate::Result<()> {
+        let bytes = include_bytes!("../../../fixtures/F01.hdf");
+        assert_eq!(
+            bytes.get(862..874),
+            Some(&[7, 171, 0, 62, 255, 255, 255, 255, 255, 255, 255, 255][..])
+        );
+        let index = parse(&Memory::new(bytes), &Limits::default())?;
+        let descriptor = index.get(1963, 62).expect("unwritten SDSVar");
+        assert_eq!(descriptor.offset, None);
+        assert_eq!(descriptor.length, 0);
+        Ok(())
+    }
 
     fn image(records: &[(u16, u16, u32, u32)]) -> Vec<u8> {
         let mut bytes = vec![0x0e, 3, 0x13, 1];
