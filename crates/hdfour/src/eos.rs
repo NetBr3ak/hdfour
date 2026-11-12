@@ -554,7 +554,7 @@ mod tests {
         assert!(matches!(
             from_struct_metadata(GRID, &limits),
             Err(Error::LimitExceeded {
-                limit: "group depth",
+                limit: "group_depth",
                 value: 2,
                 max: 1
             })

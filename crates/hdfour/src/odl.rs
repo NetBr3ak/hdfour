@@ -178,7 +178,7 @@ impl Parser<'_> {
             .ok_or_else(|| self.malformed("ODL depth overflow"))?;
         if next > self.max_depth {
             return Err(Error::LimitExceeded {
-                limit: "group depth",
+                limit: "group_depth",
                 value: next,
                 max: self.max_depth,
             });
@@ -342,7 +342,7 @@ mod tests {
             assert!(matches!(
                 super::parse(text, &limits),
                 Err(Error::LimitExceeded {
-                    limit: "group depth",
+                    limit: "group_depth",
                     value: 2,
                     max: 1
                 })
@@ -486,7 +486,7 @@ mod tests {
                 &Limits::default()
             ),
             Err(crate::Error::LimitExceeded {
-                limit: "group depth",
+                limit: "group_depth",
                 value: 65,
                 max: 64
             })
