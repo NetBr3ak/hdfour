@@ -8,7 +8,7 @@
     clippy::panic
 )]
 
-use crate::{Codec, Error, Limits, Result};
+use crate::{Codec, Error, Result};
 use miniz_oxide::inflate::{
     TINFLStatus,
     core::{DecompressorOxide, decompress, inflate_flags},
@@ -17,17 +17,10 @@ use miniz_oxide::inflate::{
 /// Decode one complete element into its declared output buffer without allocating storage.
 ///
 /// The caller must check its file's array limit and compression ratio before allocating the buffer.
-/// This function also checks the default array ceiling and ratio before writing any bytes.
+/// This function also checks the ratio before writing any bytes.
 /// An error may leave partially decoded bytes in the buffer; callers must discard them.
 pub fn decode(codec: &Codec, input: &[u8], output: &mut [u8]) -> Result<()> {
-    let ratio = match codec {
-        Codec::None => 1,
-        // Specification T4; crle_priv.h:29-41 permits 130 output bytes per two-byte run.
-        Codec::Rle => 65,
-        Codec::Deflate => 1032,
-        Codec::Other(code) => return Err(unsupported(*code)),
-    };
-    check_sizes(input.len(), output.len(), ratio)?;
+    check_ratio(codec, input.len(), output.len())?;
     match codec {
         Codec::None => {
             if input.len() != output.len() {
@@ -42,16 +35,17 @@ pub fn decode(codec: &Codec, input: &[u8], output: &mut [u8]) -> Result<()> {
     }
 }
 
-fn check_sizes(input_len: usize, output_len: usize, ratio: usize) -> Result<()> {
-    let value = u64::try_from(output_len).map_err(|_| malformed("decoded size overflow"))?;
-    let max = Limits::default().max_array_bytes;
-    if value > max {
-        return Err(Error::LimitExceeded {
-            limit: "array bytes",
-            value,
-            max,
-        });
-    }
+/// Check the codec's maximum expansion ratio before allocating the output buffer.
+///
+/// The caller must separately check its file's array limit.
+pub fn check_ratio(codec: &Codec, input_len: usize, output_len: usize) -> Result<()> {
+    let ratio = match codec {
+        Codec::None => 1,
+        // Specification T4; crle_priv.h:29-41 permits 130 output bytes per two-byte run.
+        Codec::Rle => 65,
+        Codec::Deflate => 1032,
+        Codec::Other(code) => return Err(unsupported(*code)),
+    };
     // If multiplication overflows, every representable output length is below the ratio ceiling.
     if input_len
         .checked_mul(ratio)
@@ -63,8 +57,13 @@ fn check_sizes(input_len: usize, output_len: usize, ratio: usize) -> Result<()> 
 }
 
 fn decode_rle(mut input: &[u8], mut output: &mut [u8]) -> Result<()> {
-    while let Some((&control, rest)) = input.split_first() {
-        // crle.c:121-131; crle_priv.h:35-41 adds three to runs and one to literal mixes.
+    // crle.c:106,139-141 stops when the requested output is full, leaving any old tail unread.
+    // SQ4 R1 additionally requires that the output ends at a record boundary.
+    while !output.is_empty() {
+        let (&control, rest) = input
+            .split_first()
+            .ok_or_else(|| malformed("RLE stream is shorter than declared output"))?;
+        // crle.c:110-119; crle_priv.h:35-41 adds three to runs and one to literal mixes.
         let base = if control & 0x80 != 0 { 3 } else { 1 };
         let length = usize::from(control & 0x7f)
             .checked_add(base)
@@ -87,9 +86,6 @@ fn decode_rle(mut input: &[u8], mut output: &mut [u8]) -> Result<()> {
         };
         output = remaining;
     }
-    if !output.is_empty() {
-        return Err(malformed("RLE stream is shorter than declared output"));
-    }
     Ok(())
 }
 
@@ -97,9 +93,9 @@ fn decode_deflate(input: &[u8], output: &mut [u8]) -> Result<()> {
     // cdeflate.c:360 uses inflateInit, so the zlib wrapper and its checksum are required.
     let flags = inflate_flags::TINFL_FLAG_PARSE_ZLIB_HEADER
         | inflate_flags::TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF;
-    let (status, consumed, written) =
+    let (status, _, written) =
         decompress(&mut DecompressorOxide::default(), input, output, 0, flags);
-    if status != TINFLStatus::Done || consumed != input.len() || written != output.len() {
+    if status != TINFLStatus::Done || written != output.len() {
         return Err(malformed("invalid zlib stream or decoded size mismatch"));
     }
     Ok(())
@@ -202,17 +198,26 @@ mod tests {
     }
 
     #[test]
-    fn rle_requires_exact_output_and_complete_input() -> Result<()> {
+    fn rle_requires_exact_output_and_ignores_stale_tail() -> Result<()> {
         for encoded in [&[0x80, 7][..], &[2, 1, 2, 3][..]] {
             assert_malformed(decode(&Codec::Rle, encoded, &mut [0; 2]));
             assert_malformed(decode(&Codec::Rle, encoded, &mut [0; 4]));
-            let mut trailing = encoded.to_vec();
-            trailing.extend_from_slice(&[0, 8]);
-            assert_malformed(decode(&Codec::Rle, &trailing, &mut [0; 3]));
+            for suffix in [&[0, 8][..], &[2, 3], &[0x80]] {
+                let mut trailing = encoded.to_vec();
+                trailing.extend_from_slice(suffix);
+                let mut output = [0; 3];
+                decode(&Codec::Rle, &trailing, &mut output)?;
+                let expected = if encoded[0] == 0x80 {
+                    [7; 3]
+                } else {
+                    [1, 2, 3]
+                };
+                assert_eq!(output, expected);
+            }
         }
         decode(&Codec::Rle, &[], &mut [])?;
         assert_malformed(decode(&Codec::Rle, &[], &mut [0]));
-        assert_malformed(decode(&Codec::Rle, &[0, 1], &mut []));
+        decode(&Codec::Rle, &[0, 1], &mut [])?;
         Ok(())
     }
 
@@ -258,10 +263,21 @@ mod tests {
     }
 
     #[test]
-    fn zlib_rejects_truncation_and_corruption() {
-        for encoded in [ZLIB_HELLO, ZLIB_EMPTY, ZLIB_STORED] {
+    fn zlib_rejects_truncation_and_corruption() -> Result<()> {
+        for (encoded, expected) in [
+            (ZLIB_HELLO, &b"Hello, zlib!"[..]),
+            (ZLIB_EMPTY, &b""[..]),
+            (ZLIB_STORED, &b"abc"[..]),
+        ] {
+            let mut output = vec![0; expected.len()];
+            decode(&Codec::Deflate, encoded, &mut output)?;
+            assert_eq!(output, expected);
             for length in 0..encoded.len() {
-                assert_malformed(decode(&Codec::Deflate, &encoded[..length], &mut [0; 12]));
+                assert_malformed(decode(
+                    &Codec::Deflate,
+                    &encoded[..length],
+                    &mut vec![0; expected.len()],
+                ));
             }
         }
         for index in [0, 1, 2, ZLIB_HELLO.len() - 1] {
@@ -269,10 +285,11 @@ mod tests {
             corrupt[index] ^= 0xff;
             assert_malformed(decode(&Codec::Deflate, &corrupt, &mut [0; 12]));
         }
+        Ok(())
     }
 
     #[test]
-    fn zlib_requires_exact_output_and_complete_input() {
+    fn zlib_requires_exact_output_and_ignores_stale_tail() -> Result<()> {
         assert_malformed(decode(&Codec::Deflate, ZLIB_HELLO, &mut [0; 11]));
         assert_malformed(decode(&Codec::Deflate, ZLIB_HELLO, &mut [0; 13]));
         assert_malformed(decode(&Codec::Deflate, ZLIB_HELLO, &mut []));
@@ -280,8 +297,11 @@ mod tests {
         for suffix in [&[0][..], ZLIB_EMPTY] {
             let mut trailing = ZLIB_HELLO.to_vec();
             trailing.extend_from_slice(suffix);
-            assert_malformed(decode(&Codec::Deflate, &trailing, &mut [0; 12]));
+            let mut output = [0; 12];
+            decode(&Codec::Deflate, &trailing, &mut output)?;
+            assert_eq!(&output, b"Hello, zlib!");
         }
+        Ok(())
     }
 
     #[test]
@@ -289,35 +309,26 @@ mod tests {
         assert_malformed(decode(&Codec::Deflate, &ZLIB_HELLO[2..16], &mut [0; 12]));
         let mut gzip = vec![31, 139, 8, 0, 0, 0, 0, 0, 0, 3];
         gzip.extend_from_slice(&ZLIB_HELLO[2..16]);
-        gzip.extend_from_slice(&[0; 8]);
+        gzip.extend_from_slice(&[0x9d, 0x16, 0xf9, 0x85, 12, 0, 0, 0]);
         assert_malformed(decode(&Codec::Deflate, &gzip, &mut [0; 12]));
     }
 
     #[test]
     fn deflate_ratio_rejected_before_writing() {
-        let mut output = vec![0xa5; ZLIB_EMPTY.len() * 1032 + 1];
-        assert_malformed(decode(&Codec::Deflate, ZLIB_EMPTY, &mut output));
+        let mut output = vec![0xa5; ZLIB_HELLO.len() * 1032 + 1];
+        assert_malformed(decode(&Codec::Deflate, ZLIB_HELLO, &mut output));
         assert!(output.iter().all(|&byte| byte == 0xa5));
     }
 
     #[test]
-    fn size_checks_cover_ratios_array_limit_and_overflow() -> Result<()> {
-        check_sizes(2, 130, 65)?;
-        assert_malformed(check_sizes(2, 131, 65));
-        check_sizes(1, 1032, 1032)?;
-        assert_malformed(check_sizes(1, 1033, 1032));
-        check_sizes(usize::MAX, 1, 1032)?;
-        check_sizes(0, 0, 65)?;
-        assert_malformed(check_sizes(0, 1, 65));
-        check_sizes(2_147_483_648, 2_147_483_648, 1)?;
-        assert!(matches!(
-            check_sizes(usize::MAX, 2_147_483_649, 1032),
-            Err(Error::LimitExceeded {
-                limit: "array bytes",
-                value: 2_147_483_649,
-                max: 2_147_483_648
-            })
-        ));
+    fn ratio_checks_cover_boundaries_and_overflow() -> Result<()> {
+        check_ratio(&Codec::Rle, 2, 130)?;
+        assert_malformed(check_ratio(&Codec::Rle, 2, 131));
+        check_ratio(&Codec::Deflate, 1, 1032)?;
+        assert_malformed(check_ratio(&Codec::Deflate, 1, 1033));
+        check_ratio(&Codec::Deflate, usize::MAX, 1)?;
+        check_ratio(&Codec::Rle, 0, 0)?;
+        assert_malformed(check_ratio(&Codec::Rle, 0, 1));
         Ok(())
     }
 
