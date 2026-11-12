@@ -51,8 +51,8 @@ pub fn decode(codec: Codec, bytes: &[u8]) -> Result<Vec<u8>> {
 /// Exercise both structural syntax and the EOS mapper without lossy UTF-8 conversion.
 pub fn parse_odl(bytes: &[u8]) -> Result<()> {
     let text = std::str::from_utf8(bytes).map_err(|_| malformed())?;
-    odl::parse(text)?;
-    eos::from_struct_metadata(text)?;
+    odl::parse(text, &Limits::default())?;
+    eos::from_struct_metadata(text, &Limits::default())?;
     Ok(())
 }
 
