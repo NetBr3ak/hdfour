@@ -28,3 +28,11 @@ pub use types::{
     Array, Attribute, ByteOrder, Codec, DType, Dataset, Dimension, DimensionMap, Eos, EosField,
     EosObject, Skipped, Storage, Value,
 };
+
+pub use read::File;
+
+/// Open a file and read its metadata without reading array payloads.
+#[cfg(any(unix, windows))]
+pub fn open(path: impl AsRef<std::path::Path>) -> Result<File> {
+    File::from_source(FileSource::open(path)?, Limits::default())
+}
