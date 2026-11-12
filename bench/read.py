@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import platform
 from pathlib import Path
 
 import numpy as np
@@ -68,10 +69,11 @@ def main() -> None:
     parser.add_argument("--check", type=Path, metavar="GOLDEN_DIRECTORY")
     parser.add_argument("--threads", choices=("one", "all"), default="all")
     args = parser.parse_args()
-    if args.threads == "one":
+    if args.threads == "one" and platform.system() == "Linux":
         # available_parallelism observes the calling process's Linux CPU affinity.
         cpus = os.sched_getaffinity(0)
         os.sched_setaffinity(0, {min(cpus)})
+    # On macOS, measure.py verifies and selects a separate non-parallel build.
     count = 0
     for name, values in read_arrays(args.impl, args.file):
         if args.check:

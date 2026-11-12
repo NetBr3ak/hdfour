@@ -1,8 +1,12 @@
 //! Browser bindings with owned typed arrays and plain metadata objects.
 
-use hdfour::{Attribute, Codec, DType, Dataset, Dimension, EosObject, Storage, Value};
-use js_sys::{Array, Object, Reflect};
+use hdfour::{
+    Attribute, Codec, DType, Dataset, Dimension, EosObject, Limits, Memory, Storage, Value,
+};
+use js_sys::{Array, Object, Reflect, Uint8Array};
 use wasm_bindgen::prelude::*;
+
+const MAX_BROWSER_BYTES: u64 = 268_435_456;
 
 /// An HDF4 file retained in WebAssembly memory until `free()`.
 #[wasm_bindgen]
@@ -14,9 +18,24 @@ pub struct File {
 impl File {
     /// Copy file bytes into WebAssembly and read the metadata.
     #[wasm_bindgen(js_name = fromBytes)]
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<File, JsValue> {
+    pub fn from_bytes(bytes: Uint8Array) -> Result<File, JsValue> {
+        let length = u64::from(bytes.length());
+        if length > MAX_BROWSER_BYTES {
+            return Err(js_error(hdfour::Error::LimitExceeded {
+                limit: "file bytes",
+                value: length,
+                max: MAX_BROWSER_BYTES,
+            }));
+        }
+        let limits = Limits {
+            max_array_bytes: MAX_BROWSER_BYTES,
+            max_attribute_bytes: 1_048_576,
+            // Set max_metadata_bytes to 16_777_216 when the core exposes it (SQ9 W1).
+            ..Limits::default()
+        };
         Ok(Self {
-            inner: hdfour::File::from_bytes(bytes).map_err(js_error)?,
+            inner: hdfour::File::from_source(Memory::new(bytes.to_vec()), limits)
+                .map_err(js_error)?,
         })
     }
 
