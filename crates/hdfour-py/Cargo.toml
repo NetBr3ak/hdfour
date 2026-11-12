@@ -1,0 +1,20 @@
+[package]
+name = "hdfour-py"
+description = "Python bindings for hdfour, work in progress"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "_hdfour"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdfour = { workspace = true, features = ["parallel"] }
+pyo3 = { workspace = true, features = ["extension-module"] }
+numpy.workspace = true
+
+[lints]
+workspace = true
