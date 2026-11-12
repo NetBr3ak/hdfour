@@ -1,0 +1,55 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+  color: oklch(0.25 0.015 210);
+  background: oklch(0.975 0.005 210);
+  line-height: 1.55;
+  --accent: oklch(0.38 0.065 185);
+  --border: oklch(0.63 0.015 210);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 72rem; margin: 0 auto; padding: 2.5rem 2rem; }
+header { margin-bottom: 2.5rem; }
+h1 { margin: 0.25rem 0 0.75rem; font-size: 2rem; line-height: 1.2; }
+h2 { margin: 0 0 1rem; font-size: 1.25rem; }
+h3 { margin: 1.5rem 0 0.75rem; font-size: 1rem; }
+p { max-width: 70ch; margin: 0.5rem 0 1rem; }
+.project { color: var(--accent); font-weight: 700; margin: 0; }
+#drop-zone { border: 1px dashed var(--border); border-radius: 0.5rem; padding: 1.5rem; }
+label { display: block; margin-bottom: 0.5rem; font-weight: 600; }
+input, select { max-width: 100%; font: inherit; }
+input { display: block; min-height: 2.75rem; width: 100%; }
+input::file-selector-button {
+  min-height: 2.75rem;
+  margin-right: 0.75rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.25rem;
+  background: var(--accent);
+  color: oklch(0.99 0.005 210);
+  font: inherit;
+  cursor: pointer;
+}
+input:disabled { opacity: 0.65; }
+input::file-selector-button:hover { background: oklch(0.3 0.055 185); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.workspace { display: grid; grid-template-columns: minmax(14rem, 1fr) minmax(0, 2fr); gap: 2.5rem; margin: 2.5rem 0; }
+.workspace > section { min-width: 0; }
+select { width: 100%; padding: 0.25rem; border: 1px solid var(--border); border-radius: 0.25rem; background: oklch(0.995 0.002 210); }
+option { padding: 0.5rem; overflow-wrap: anywhere; }
+figure { margin: 1rem 0; }
+canvas { display: block; width: 100%; max-width: 32rem; height: auto; max-height: 32rem; object-fit: contain; object-position: left top; image-rendering: pixelated; background: oklch(0.86 0.01 210); }
+figcaption { margin-top: 0.75rem; }
+pre { max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 1rem; background: oklch(0.94 0.008 210); font-size: 0.875rem; }
+summary { width: fit-content; min-height: 2.75rem; cursor: pointer; font-weight: 600; }
+footer { margin-top: 2.5rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+[hidden] { display: none; }
+
+@media (max-width: 42rem) {
+  main { padding: 1.5rem 1rem; }
+  h1 { font-size: 1.75rem; }
+  .workspace { grid-template-columns: 1fr; gap: 2rem; margin: 2rem 0; }
+  #drop-zone { padding: 1rem; }
+}

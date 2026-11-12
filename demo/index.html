@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Inspect HDF4 datasets and preview raw two-dimensional arrays in your browser. Your file stays on your device.">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <title>hdfour | HDF4 file inspector</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./style.css">
+    <script type="module" src="./app.mjs"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="project">hdfour</p>
+        <h1>HDF4 file inspector</h1>
+        <p>Read dataset metadata and preview raw two-dimensional arrays.</p>
+      </header>
+      <section id="drop-zone" aria-labelledby="open-heading">
+        <h2 id="open-heading">Open a file</h2>
+        <p id="privacy">Your file never leaves this browser. There are no uploads or trackers.</p>
+        <label for="file">Choose an HDF4 file, or drop one here</label>
+        <input id="file" type="file" aria-describedby="privacy" disabled>
+        <p id="status" role="status">Loading the reader.</p>
+        <noscript>This inspector needs JavaScript and WebAssembly. Enable them to open a file.</noscript>
+      </section>
+      <div class="workspace">
+        <section aria-labelledby="datasets-heading">
+          <h2 id="datasets-heading">Datasets</h2>
+          <label for="datasets">Select a dataset</label>
+          <select id="datasets" size="8" disabled aria-describedby="dataset-help"></select>
+          <p id="dataset-help">Use the arrow keys to browse the list.</p>
+        </section>
+        <section aria-labelledby="preview-heading">
+          <h2 id="preview-heading">Preview</h2>
+          <p id="preview-status" role="status">Open a file, then select a two-dimensional dataset.</p>
+          <figure id="preview" hidden>
+            <canvas id="canvas" role="img" aria-label="Dataset greyscale preview" aria-describedby="range"></canvas>
+            <figcaption id="range"></figcaption>
+          </figure>
+          <h3>Dataset metadata</h3>
+          <pre id="metadata" tabindex="0" aria-label="Dataset metadata">No dataset selected.</pre>
+        </section>
+      </div>
+      <details>
+        <summary>File attributes and omitted objects</summary>
+        <pre id="file-metadata" tabindex="0" aria-label="File metadata">No file open.</pre>
+      </details>
+      <footer>
+        <p>Values are raw. Scale and offset are not applied. Fill values are excluded from the preview.</p>
+      </footer>
+    </main>
+  </body>
+</html>
