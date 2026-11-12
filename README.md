@@ -1,27 +1,215 @@
 # hdfour
 
-status: work in progress, nothing published yet
+Status: work in progress. Nothing is published to crates.io, PyPI or npm.
 
-## Promise
+hdfour reads HDF4 and HDF-EOS2 files without the HDF4 C library. The goal for
+version 0.1: return every value of every dataset in scope bit-exactly as the HDF4
+C library's `SDreaddata` returns it, or an error that names the unsupported feature.
+This is a development target. [Tests](#tests) lists what the tests check today.
 
-The goal for version 0.1 is to open HDF4 and HDF-EOS2 files without a C library
-installed and return every value of every dataset in scope, bit-exactly as
-the HDF4 C library's `SDreaddata` returns it, or an error naming the unsupported
-feature. This is a development target, not a claim about the current code.
+hdfour is an independent project. It is not affiliated with, endorsed by or supported by The HDF Group or NASA. HDF is a trade mark of The HDF Group.
 
-hdfour is an independent project. It is not affiliated with, endorsed by or
-supported by The HDF Group or NASA. HDF is a trade mark of The HDF Group.
+The reader is read-only. It returns raw stored values. It does not apply scale,
+offset or fill values.
 
 ## Install
 
-## Example
+All three bindings build from source. You need Rust 1.85 or later.
+
+### Rust
+
+Add the core crate as a path dependency:
+
+```toml
+[dependencies]
+hdfour = { path = "path/to/hdfour/crates/hdfour" }
+```
+
+The `parallel` feature is on by default. It reads the chunks of one dataset on
+several threads. The WebAssembly binding turns it off.
+
+### Python
+
+You need Python 3.10 or later. In a virtual environment at the repository root:
+
+```sh
+pip install maturin==1.16.0 numpy
+maturin develop
+```
+
+### WebAssembly
+
+You need the `wasm32-unknown-unknown` Rust target and
+`wasm-bindgen-cli` 0.2.129. From the repository root:
+
+```sh
+sh demo/build.sh
+```
+
+The script writes the module and its JavaScript glue to `demo/pkg/`.
+
+## Examples
+
+Each example reads the committed fixture `fixtures/F01.hdf`.
+
+Rust:
+
+```rust
+fn main() -> hdfour::Result<()> {
+    let file = hdfour::open("fixtures/F01.hdf")?;
+    let dataset = file.dataset("i16")?;
+    let array = file.read(dataset)?;
+    println!("{} {:?}", dataset.name, array.shape); // i16 [3, 5]
+    Ok(())
+}
+```
+
+To print all metadata of a file: `cargo run -p hdfour --example ls -- fixtures/F01.hdf`.
+
+Python:
+
+```python
+import hdfour
+
+file = hdfour.open("fixtures/F01.hdf")
+dataset = file["i16"]
+print(dataset.shape)  # [3, 5]
+values = dataset.read()  # NumPy array, C order, native byte order
+```
+
+More in [docs/python.md](docs/python.md).
+
+JavaScript, with the module from `sh demo/build.sh`:
+
+```js
+import init, { File } from './pkg/hdfour_wasm.js';
+
+await init();
+const file = File.fromBytes(bytes); // bytes: a Uint8Array with the file contents
+try {
+  const datasets = file.datasets();
+  const values = file.read(0); // a typed array
+} finally {
+  file.free();
+}
+```
 
 ## Scope
 
+The reader handles:
+
+- the HDF4 header, data descriptor blocks and special elements;
+- the SD layout with a `CDF0.0` Vgroup: datasets, dimensions (unlimited too),
+  coordinate variables and attributes on the file, datasets and dimensions;
+- the types i8, u8, i16, u16, i32, u32, f32, f64, char8 and uchar8, big-endian
+  and little-endian;
+- contiguous, linked and chunked storage;
+- the codecs none, DEFLATE and RLE;
+- datasets and chunks that were never written: they read as the fill value;
+- HDF-EOS2 `StructMetadata`: grids and swaths, their fields linked to datasets,
+  dimension maps and raw parameters.
+
+Some features stop `read`. It returns an `Unsupported` error
+with one of these feature names: `szip`, `nbit`, `skipping-huffman`, `jpeg`,
+`imcomp`, `codec` (any other compression code), `external-element` and
+`fill-type-mismatch`.
+
+Other features do not stop `open`. The reader leaves the object out and lists it
+in `skipped()` with one of these names: `number-type`, `ragged-array`,
+`vdata-interlace`, `legacy-sd-layout`, `eos-point`, `vdata-field`, `merged-field`
+and `index-dimension-map`.
+
+A file with a broken structure gives a `Malformed` error. So does an offset or
+length past the end of the file or past 2^31 - 1. The parsing modules deny
+indexing, unchecked arithmetic, `unwrap` and `panic` through Clippy lints.
+
+There is no API for writing, raster images, annotations, Vdata tables or HDF5.
+The reader does not compute projections or coordinates.
+
+The table in [docs/format-coverage.md](docs/format-coverage.md) maps each feature
+to the fixture that tests it.
+
+## Limits
+
+Every file is read under resource limits. A file over a limit gives a
+`LimitExceeded` error. The Rust `Limits` defaults:
+
+| Limit | Default |
+|---|---|
+| `max_descriptors` | 4,194,304 |
+| `max_dd_blocks` | 65,536 |
+| `max_group_depth` | 64 |
+| `max_rank` | 32 |
+| `max_array_bytes` | 2,147,483,648 (2 GiB) |
+| `max_attribute_bytes` | 67,108,864 (64 MiB) |
+| `max_metadata_bytes` | 67,108,864 (64 MiB) |
+| `max_chunks` | 1,048,576 |
+| `max_chunk_header_bytes` | 256 |
+
+Rust code can set other limits with `File::from_source`. The browser binding uses
+tighter limits: a file of at most 268,435,456 bytes (256 MiB), arrays of at most
+256 MiB, attributes of at most 1 MiB and metadata of at most 16 MiB.
+
+[docs/limits.md](docs/limits.md) explains what each limit bounds.
+
 ## Demo
+
+The `demo/` folder holds a one-page browser inspector. It reads a file in the
+browser, lists its datasets and previews a two-dimensional dataset in grey scale.
+The page has no upload path.
+
+1. Build the module: `sh demo/build.sh`.
+2. Serve the repository root with any static HTTP server.
+3. Open `/demo/` and pick an HDF4 file, or drop one on the page.
+
+There is no public address for the demo. See [demo/README.md](demo/README.md).
 
 ## Benchmarks
 
-## Testing
+The harness in `bench/` compares hdfour with pyhdf 0.11.7 and with GDAL built
+with `libgdal-hdf4`. Speed comes from hyperfine: 3 warm-ups and 20 runs of one
+read script per reader. Memory is the median peak RSS of 5 runs. Each reader must
+first match the C library's golden bytes.
+
+Results will be added after the first measured run. The method is in
+[bench/README.md](bench/README.md).
+
+## Tests
+
+`sh scripts/check.sh` runs `cargo fmt --check`, Clippy with warnings as errors,
+`cargo test` for the workspace without the Python crate, `cargo doc` with
+warnings as errors, and Ruff. It also checks that each parsing module keeps its
+no-panic lint list and that no crate has handwritten `unsafe` code.
+
+The Rust golden tests open the fixtures F01 to F21 and the committed corpus files
+R02 and R03. They compare metadata, refusals and skipped objects with the
+expected results, and every readable value with the C library's output, byte for
+byte. A property test checks that random bytes never cause a panic.
+
+The fixtures were written through the HDF4 C library 4.2.15 and HDF-EOS2 2.20
+from conda-forge, by `fixtures/c/gen.c`. The golden values are the bytes that
+`SDreaddata` returns (`fixtures/c/sdsdump.c`); the metadata comes from pyhdf
+(`fixtures/dump.py`). `sh fixtures/build.sh` rebuilds them on Linux x86-64 from
+a locked environment. See [fixtures/README.md](fixtures/README.md) and
+[corpus/README.md](corpus/README.md).
+
+Other tests:
+
+- Python: `maturin develop && pytest -q python/tests`. This includes a
+  comparison with pyhdf.
+- WebAssembly: `node demo/smoke.mjs` after `sh demo/build.sh`.
+- Fuzzing: four cargo-fuzz targets, `open_read_all`, `codec_deflate`,
+  `codec_rle` and `odl`. Run them with `sh fuzz/run.sh`. See
+  [fuzz/README.md](fuzz/README.md).
 
 ## Credits
+
+The format layouts follow the HDF4 C sources. R02 and R03 are test files from the
+HDF4 source tree. [NOTICE](NOTICE) carries their licence. The reader depends on
+the Rust crates miniz_oxide and bytemuck. The bindings use PyO3, rust-numpy,
+wasm-bindgen and js-sys.
+
+## Licence
+
+Licensed under either of [Apache License 2.0](LICENSE-APACHE) or
+[MIT](LICENSE-MIT), at your option. See also [NOTICE](NOTICE).
