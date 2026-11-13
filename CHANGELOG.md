@@ -7,6 +7,7 @@ Releases will use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Rust `File::byte_len` and `File::read_into` for caller-allocated output buffers.
 - Rust core: `open`, `File::from_bytes` and `File::from_source` read all metadata;
   `File::read` reads one whole dataset as raw values in C order.
 - HDF4 container: header check, data descriptor blocks, linked, compressed and

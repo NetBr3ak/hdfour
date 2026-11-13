@@ -67,6 +67,9 @@ fn main() -> hdfour::Result<()> {
 
 To print all metadata of a file: `cargo run -p hdfour --example ls -- fixtures/F01.hdf`.
 
+`File::byte_len(dataset)` validates a dataset and returns its array size in bytes.
+`File::read_into(dataset, output)` reads into an exact-length byte buffer in C order and native byte order.
+
 Python:
 
 ```python

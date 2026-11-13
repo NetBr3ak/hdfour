@@ -79,17 +79,7 @@ impl File {
     /// Read a whole C-order array, without applying calibration or masking fill values.
     /// The dataset must be borrowed from this file; cloned or foreign metadata is rejected.
     pub fn read(&self, dataset: &Dataset) -> Result<Array> {
-        if !self.datasets().iter().any(|own| std::ptr::eq(own, dataset)) {
-            return Err(Error::NotFound(dataset.name.clone()));
-        }
-        let reader = Reader {
-            source: self.source.as_ref(),
-            index: &self.index,
-        };
-        reader
-            .prepare(dataset)
-            .map_err(|error| named(error, dataset))?;
-        let count = array_bytes(&dataset.shape, dataset.dtype.size(), reader.limits())?;
+        let (reader, count) = self.prepare_read(dataset)?;
         let data = match dataset.dtype {
             DType::Char8 => Value::Char8(reader.values::<u8>(dataset, count)?),
             DType::UChar8 => Value::UChar8(reader.values::<u8>(dataset, count)?),
@@ -106,6 +96,44 @@ impl File {
             shape: dataset.shape.clone(),
             data,
         })
+    }
+
+    /// Validate the dataset and return the byte length of its whole array.
+    /// The dataset must be borrowed from this file; cloned or foreign metadata is rejected.
+    /// Applies the file's [`Limits`] and returns [`Error::LimitExceeded`] when the array
+    /// is larger than the limit allows.
+    pub fn byte_len(&self, dataset: &Dataset) -> Result<usize> {
+        self.prepare_read(dataset).map(|(_, bytes)| bytes)
+    }
+
+    /// Read a whole array into an exact-length buffer in C order and native byte order.
+    /// No calibration or fill-value masking is applied. The dataset must be borrowed
+    /// from this file; cloned or foreign metadata is rejected.
+    /// On error, the contents of `output` are unspecified.
+    pub fn read_into(&self, dataset: &Dataset, output: &mut [u8]) -> Result<()> {
+        let (reader, expected) = self.prepare_read(dataset)?;
+        if output.len() != expected {
+            return Err(Error::WrongLength {
+                expected,
+                actual: output.len(),
+            });
+        }
+        reader.read_native(dataset, output)
+    }
+
+    fn prepare_read(&self, dataset: &Dataset) -> Result<(Reader<'_>, usize)> {
+        if !self.datasets().iter().any(|own| std::ptr::eq(own, dataset)) {
+            return Err(Error::NotFound(dataset.name.clone()));
+        }
+        let reader = Reader {
+            source: self.source.as_ref(),
+            index: &self.index,
+        };
+        reader
+            .prepare(dataset)
+            .map_err(|error| named(error, dataset))?;
+        let bytes = array_bytes(&dataset.shape, dataset.dtype.size(), reader.limits())?;
+        Ok((reader, bytes))
     }
 }
 
@@ -369,6 +397,11 @@ impl Reader<'_> {
             .ok_or_else(|| malformed("zero value width"))?;
         let mut values = buffer::<T>(count)?;
         let output = bytemuck::must_cast_slice_mut::<T, u8>(&mut values);
+        self.read_native(dataset, output)?;
+        Ok(values)
+    }
+
+    fn read_native(&self, dataset: &Dataset, output: &mut [u8]) -> Result<()> {
         self.read_array(dataset, output)
             .map_err(|error| named(error, dataset))?;
         let native = if cfg!(target_endian = "little") {
@@ -379,7 +412,7 @@ impl Reader<'_> {
         if dataset.order != native {
             nt::swap_in_place(output, dataset.dtype.size());
         }
-        Ok(values)
+        Ok(())
     }
 
     fn read_array(&self, dataset: &Dataset, output: &mut [u8]) -> Result<()> {

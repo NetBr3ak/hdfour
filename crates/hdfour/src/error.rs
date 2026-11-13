@@ -29,6 +29,10 @@ pub enum Error {
         name: String,
         count: usize,
     },
+    WrongLength {
+        expected: usize,
+        actual: usize,
+    },
 }
 
 impl fmt::Display for Error {
@@ -48,6 +52,12 @@ impl fmt::Display for Error {
             Self::NotFound(name) => write!(formatter, "dataset not found: {name}"),
             Self::Ambiguous { name, count } => {
                 write!(formatter, "ambiguous dataset {name}: {count} matches")
+            }
+            Self::WrongLength { expected, actual } => {
+                write!(
+                    formatter,
+                    "output buffer holds {actual} bytes, the dataset needs {expected}"
+                )
             }
         }
     }
