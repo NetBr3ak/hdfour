@@ -176,7 +176,7 @@ with `libgdal-hdf4`. Speed comes from hyperfine: 3 warm-ups and 20 runs of one
 read script per reader. Memory is the median peak RSS of 5 runs. Each reader must
 first match the C library's golden bytes.
 
-The latest measured run: 2026-11-13, revision `026a6b9`, hdfour 0.1.0, pyhdf
+The latest measured run: 2026-11-14, revision `6a1a31e`, hdfour 0.1.0, pyhdf
 0.11.7 (HDF4 4.2.15), GDAL 3.13.2, hyperfine 2.0.0, Python 3.12.16, Linux x86_64,
 Intel Core i5-8350U, 16 GB of memory, an otherwise idle machine. Each time is the
 median of 20 runs; each memory figure is the median peak RSS of 5 runs (GNU time,
@@ -184,27 +184,28 @@ KiB divided by 1024).
 
 | File | Reader | Median time | Median peak RSS |
 |---|---|---:|---:|
-| `chunked.hdf`: four 4800 by 4800 int16 datasets, DEFLATE-6 chunks | hdfour, one thread | 0.374 s | 73.2 MiB |
-| | hdfour, all threads | 0.294 s | 75.2 MiB |
-| | pyhdf | 0.320 s | 78.0 MiB |
-| | GDAL | 0.459 s | 160.3 MiB |
-| `contiguous.hdf`: one 8192 by 8192 float32 dataset | hdfour, one thread | 0.326 s | 284.7 MiB |
-| | hdfour, all threads | 0.323 s | 284.7 MiB |
-| | pyhdf | 0.240 s | 285.4 MiB |
-| | GDAL | 0.394 s | 579.7 MiB |
-| R01: a 282,525-byte MODIS file (see [corpus/README.md](corpus/README.md)) | hdfour, one thread | 0.097 s | 28.9 MiB |
-| | hdfour, all threads | 0.097 s | 28.9 MiB |
-| | pyhdf | 0.102 s | 29.6 MiB |
-| | GDAL | 0.145 s | 67.3 MiB |
+| `chunked.hdf`: four 4800 by 4800 int16 datasets, DEFLATE-6 chunks | hdfour, one thread | 0.292 s | 73.2 MiB |
+| | hdfour, all threads | 0.215 s | 75.2 MiB |
+| | pyhdf | 0.322 s | 77.9 MiB |
+| | GDAL | 0.462 s | 158.7 MiB |
+| `contiguous.hdf`: one 8192 by 8192 float32 dataset | hdfour, one thread | 0.194 s | 284.5 MiB |
+| | hdfour, all threads | 0.193 s | 284.8 MiB |
+| | pyhdf | 0.246 s | 285.5 MiB |
+| | GDAL | 0.407 s | 579.7 MiB |
+| R01: a 282,525-byte MODIS file (see [corpus/README.md](corpus/README.md)) | hdfour, one thread | 0.097 s | 28.8 MiB |
+| | hdfour, all threads | 0.096 s | 29.0 MiB |
+| | pyhdf | 0.100 s | 29.6 MiB |
+| | GDAL | 0.142 s | 67.5 MiB |
 
-In this run hdfour with all threads reads the chunked file in 8 percent less time
-than pyhdf; with one thread it takes 1.17 times as long. On the contiguous file
-hdfour takes 1.36 times as long as pyhdf. On R01 the two are level. The `parallel`
-feature shortened the chunked read by 21 percent. hdfour's peak memory is close to
-pyhdf's and less than half of GDAL's. The first run, at revision `3708d41`, measured
-0.662 s on the chunked file and 0.370 s on the contiguous file for hdfour with one
-thread; the fill of the output and the byte swap changed after it. These figures
-describe one machine and three files. The method is in
+In this run hdfour reads both generated files in less time than pyhdf: the chunked
+file in 9 percent less with one thread and 33 percent less with all threads, the
+contiguous file in 21 percent less. On R01 the two are level. The `parallel`
+feature shortened the chunked read by 26 percent. hdfour's peak memory is close to
+pyhdf's and less than half of GDAL's. Two earlier runs on the same machine measured
+0.662 s (revision `3708d41`) and 0.374 s (`026a6b9`) on the chunked file, and
+0.370 s and 0.326 s on the contiguous file, for hdfour with one thread; the fill of
+the output, the byte swap and the allocation of the output changed between them.
+These figures describe one machine and three files. The method is in
 [bench/README.md](bench/README.md).
 
 ## Tests
