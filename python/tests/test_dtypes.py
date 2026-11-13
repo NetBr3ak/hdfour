@@ -36,8 +36,8 @@ def test_all_dtypes_and_fill_values(fixture):
         assert values.dtype.isnative
         assert values.shape == tuple(golden["shape"])
         assert values.flags.c_contiguous
-        assert values.base is not None
-        assert not values.flags.owndata
+        assert values.base is None
+        assert values.flags.owndata
         expected = np.frombuffer(
             (FIXTURES / "golden" / fixture / f"{index}.bin").read_bytes(),
             dtype=values.dtype.newbyteorder("<"),

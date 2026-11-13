@@ -1,21 +1,52 @@
-//! Ownership-moving NumPy conversion for raw values.
+//! NumPy allocations for datasets and ownership-moving conversion for attributes.
 
-use hdfour::{Array, Attribute, Value};
-use numpy::{Element, IntoPyArray, PyArrayMethods, ndarray::IxDyn};
+use hdfour::{Attribute, DType, Dataset, File, Value};
+use numpy::{Element, IntoPyArray, PyArray, PyArrayMethods, ndarray::IxDyn};
 use pyo3::exceptions::PyOverflowError;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyModule};
 
-pub(crate) fn array(py: Python<'_>, array: Array) -> PyResult<Bound<'_, PyAny>> {
-    let shape = array
+pub(crate) fn read<'py>(
+    py: Python<'py>,
+    file: &File,
+    dataset: &Dataset,
+) -> PyResult<Bound<'py, PyAny>> {
+    let shape = dataset
         .shape
-        .into_iter()
+        .iter()
         .map(|size| {
-            usize::try_from(size)
+            usize::try_from(*size)
                 .map_err(|_| PyOverflowError::new_err("array dimension exceeds usize"))
         })
         .collect::<PyResult<Vec<_>>>()?;
-    values(py, array.data, &shape)
+    match dataset.dtype {
+        DType::Char8 | DType::I8 => read_numeric::<i8>(py, file, dataset, &shape),
+        DType::UChar8 | DType::U8 => read_numeric::<u8>(py, file, dataset, &shape),
+        DType::I16 => read_numeric::<i16>(py, file, dataset, &shape),
+        DType::U16 => read_numeric::<u16>(py, file, dataset, &shape),
+        DType::I32 => read_numeric::<i32>(py, file, dataset, &shape),
+        DType::U32 => read_numeric::<u32>(py, file, dataset, &shape),
+        DType::F32 => read_numeric::<f32>(py, file, dataset, &shape),
+        DType::F64 => read_numeric::<f64>(py, file, dataset, &shape),
+    }
+}
+
+fn read_numeric<'py, T: Element + bytemuck::Pod>(
+    py: Python<'py>,
+    file: &File,
+    dataset: &Dataset,
+    shape: &[usize],
+) -> PyResult<Bound<'py, PyAny>> {
+    let array = PyModule::import(py, "numpy")?
+        .call_method1("zeros", (shape, T::get_dtype(py)))?
+        .cast_into::<PyArray<T, IxDyn>>()?;
+    {
+        let mut borrowed = array.try_readwrite()?;
+        let output = bytemuck::must_cast_slice_mut::<T, u8>(borrowed.as_slice_mut()?);
+        py.detach(|| file.read_into(dataset, output))
+            .map_err(super::python_error)?;
+    }
+    Ok(array.into_any())
 }
 
 pub(crate) fn attributes<'py>(

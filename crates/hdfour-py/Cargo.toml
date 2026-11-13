@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 hdfour = { workspace = true, features = ["parallel"] }
 pyo3 = { workspace = true, features = ["extension-module"] }
 numpy.workspace = true
+bytemuck.workspace = true
 
 [lints]
 workspace = true

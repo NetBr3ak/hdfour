@@ -175,13 +175,13 @@ impl PyDataset {
         Ok(name.into_pyobject(py)?.into_any())
     }
 
-    /// Decode raw values without holding the GIL and transfer the output buffer.
+    /// Decode raw values into a NumPy allocation without holding the GIL.
     fn read<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let dataset = self.metadata()?;
-        let array = py
-            .detach(|| self.file.read(dataset))
+        // Limits and format are checked here, before NumPy allocates anything for a hostile shape.
+        py.detach(|| self.file.byte_len(dataset))
             .map_err(python_error)?;
-        values::array(py, array)
+        values::read(py, &self.file, dataset)
     }
 }
 
