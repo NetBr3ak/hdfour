@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from os import PathLike
 from typing import Literal, TypeAlias, TypedDict
 
@@ -73,6 +74,9 @@ class Dataset:
     @property
     def codec(self) -> _Codec: ...
     def read(self) -> NDArray[np.generic]: ...
+    def read_window(
+        self, start: Sequence[int], count: Sequence[int]
+    ) -> NDArray[np.generic]: ...
 
 class Dimension:
     @property

@@ -15,6 +15,10 @@ Releases will use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Rectangular dataset reads in Rust (`read_window`), Python (`read_window`) and
+  JavaScript (`readWindow`). Uncompressed plain arrays read just the selected
+  bytes. Chunked arrays decode only the chunks that intersect the selection.
+
 - Linux and macOS CI for core checks, Python wheel tests and WebAssembly tests.
 - A binding check script and pinned Python development tools.
 

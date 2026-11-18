@@ -23,6 +23,7 @@ fn python_error(error: Error) -> PyErr {
         Error::Unsupported { .. } => UnsupportedError::new_err(message),
         Error::LimitExceeded { .. } => LimitError::new_err(message),
         Error::NotFound(_) | Error::Ambiguous { .. } => PyKeyError::new_err(message),
+        Error::InvalidSelection { .. } => PyValueError::new_err(message),
         _ => PyRuntimeError::new_err(message),
     }
 }
@@ -182,6 +183,20 @@ impl PyDataset {
         py.detach(|| self.file.byte_len(dataset))
             .map_err(python_error)?;
         values::read(py, &self.file, dataset)
+    }
+
+    /// Read a C-order rectangular window with zero-based start coordinates.
+    fn read_window<'py>(
+        &self,
+        py: Python<'py>,
+        start: Vec<u64>,
+        count: Vec<u64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let dataset = self.metadata()?;
+        let array = py
+            .detach(|| self.file.read_window(dataset, &start, &count))
+            .map_err(python_error)?;
+        values::array(py, array)
     }
 }
 

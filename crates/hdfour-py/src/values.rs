@@ -76,6 +76,18 @@ pub(crate) fn attributes<'py>(
     Ok(result)
 }
 
+pub(crate) fn array<'py>(py: Python<'py>, array: hdfour::Array) -> PyResult<Bound<'py, PyAny>> {
+    let shape = array
+        .shape
+        .iter()
+        .map(|size| {
+            usize::try_from(*size)
+                .map_err(|_| PyOverflowError::new_err("array dimension exceeds usize"))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    values(py, array.data, &shape)
+}
+
 fn values<'py>(py: Python<'py>, value: Value, shape: &[usize]) -> PyResult<Bound<'py, PyAny>> {
     match value {
         // Specification section 6: signed character arrays retain the original byte buffer.

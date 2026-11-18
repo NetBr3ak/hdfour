@@ -25,7 +25,7 @@ print(file.eos)  # None
 | `hdfour.open(path)` | A `File`. `path` is a `str` or a path-like object. |
 | `hdfour.from_bytes(data)` | A `File` read from `bytes`. |
 
-Both functions read all metadata. Array values are read only by `read()`.
+Both functions read all metadata. Neither function reads array values.
 
 ## `File`
 
@@ -52,8 +52,9 @@ Two datasets can share a name. Select them by position in `file.datasets`.
 | `storage` | Dict with `kind`: `"empty"`, `"contiguous"`, `"linked"`, `"chunked"` or `"external"`. Chunked storage also has `chunk_shape`. |
 | `codec` | `"none"`, `"rle"`, `"deflate"`, or the integer compression code |
 | `read()` | The whole array as a NumPy array |
+| `read_window(start, count)` | A NumPy array with shape `count`. Pass one zero-based start and one count per axis. A zero count gives an empty array. |
 
-`read()` returns raw values in C order and native byte order. It does not apply
+Both methods return raw values in C order and native byte order. It does not apply
 scale or offset and does not mask fill values; data that was never written reads
 as the fill value. `char8` gives `int8` and `uchar8` gives `uint8`.
 The binding releases the global interpreter lock while it decodes.

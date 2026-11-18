@@ -19,7 +19,13 @@ All three bindings build from source. You need Rust 1.85 or later.
 
 ### Rust
 
-Add the core crate as a path dependency:
+Add the core crate directly from GitHub:
+
+```sh
+cargo add hdfour --git https://github.com/NetBr3ak/hdfour.git
+```
+
+If you already have a checkout, use a path dependency:
 
 ```toml
 [dependencies]
@@ -34,8 +40,7 @@ several threads. The WebAssembly binding turns it off.
 You need Python 3.10 or later. In a virtual environment at the repository root:
 
 ```sh
-pip install maturin==1.16.0 numpy
-maturin develop
+python -m pip install .
 ```
 
 ### WebAssembly
@@ -80,6 +85,23 @@ dataset = file["i16"]
 print(dataset.shape)  # [3, 5]
 values = dataset.read()  # NumPy array, C order, native byte order
 ```
+
+To read two rows and three columns without requesting the whole array:
+
+```python
+tile = dataset.read_window(start=[1, 1], count=[2, 3])
+assert tile.shape == (2, 3)
+```
+
+In Rust, use `file.read_window(dataset, &[1, 1], &[2, 3])?`. In JavaScript,
+`file.readWindow(index, [1, 1], [2, 3])` returns a flat typed array in row order.
+
+`start` counts from zero. `count` gives the number of values on each axis,
+not the end position. This matches a unit-stride read with the HDF4 C library's
+[`SDreaddata`](https://support.hdfgroup.org/releases/hdf4/documentation/HDF4_Reference_Manual.pdf#page=134).
+Plain arrays need only the selected bytes. Chunked arrays need the chunk table
+and the chunks that overlap the selection. Linked storage and standalone
+compressed streams may still need a full read. File limits still apply.
 
 More in [docs/python.md](docs/python.md).
 

@@ -97,6 +97,51 @@ impl File {
         let array = self.inner.read(self.dataset(index)?).map_err(js_error)?;
         Ok(value(&array.data))
     }
+
+    /// Read a zero-based rectangular window into an independent typed array.
+    #[wasm_bindgen(js_name = readWindow)]
+    pub fn read_window(&self, index: u32, start: Array, count: Array) -> Result<JsValue, JsValue> {
+        let dataset = self.dataset(index)?;
+        let rank = dataset.shape.len();
+        if start.length() as usize != rank || count.length() as usize != rank {
+            return Err(
+                js_sys::RangeError::new("start and count must match the dataset rank").into(),
+            );
+        }
+        let start = coordinates(&start)?;
+        let count = coordinates(&count)?;
+        let array =
+            self.inner
+                .read_window(dataset, &start, &count)
+                .map_err(|error| match error {
+                    hdfour::Error::InvalidSelection { .. } => {
+                        js_sys::RangeError::new(&error.to_string()).into()
+                    }
+                    _ => js_error(error),
+                })?;
+        Ok(value(&array.data))
+    }
+}
+
+fn coordinates(values: &Array) -> Result<Vec<u64>, JsValue> {
+    values
+        .iter()
+        .map(|value| {
+            let invalid = || {
+                js_sys::RangeError::new(
+                    "coordinates must be unsigned safe integers or bigint values",
+                )
+            };
+            if value.is_bigint() {
+                return u64::try_from(value).map_err(|_| invalid().into());
+            }
+            let number = value.as_f64().ok_or_else(invalid)?;
+            if !(0.0..=9_007_199_254_740_991.0).contains(&number) || number.fract() != 0.0 {
+                return Err(invalid().into());
+            }
+            Ok(number as u64)
+        })
+        .collect()
 }
 
 impl File {
