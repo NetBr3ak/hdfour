@@ -1,6 +1,6 @@
 # Contributing
 
-The reader is under development. No packages have been published.
+The reader is under development. Release assets are listed on [GitHub](https://github.com/NetBr3ak/hdfour/releases).
 
 Each feature needs a fixture made through the HDF4 C library, a golden file
 containing its reference output, a specification reference and a changelog entry.

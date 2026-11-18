@@ -1,6 +1,6 @@
 # hdfour
 
-Status: work in progress. Nothing is published to crates.io, PyPI or npm.
+Status: work in progress. [GitHub Releases](https://github.com/NetBr3ak/hdfour/releases) hosts downloads.
 
 hdfour reads HDF4 and HDF-EOS2 files without the HDF4 C library. The goal for
 version 0.1: return every value of every dataset in scope bit-exactly as the HDF4
@@ -15,14 +15,16 @@ the fill value.
 
 ## Install
 
-All three bindings build from source. You need Rust 1.85 or later.
+For Python, download the wheel for your platform from [v0.1.0](https://github.com/NetBr3ak/hdfour/releases/tag/v0.1.0) and install it with `python -m pip install ./filename.whl`, replacing the filename. For the browser, install the release tarball with `npm install ./hdfour-0.1.0.tgz`. These are release assets, not registry installs.
+
+To build from source, you need Rust 1.85 or later.
 
 ### Rust
 
 Add the core crate directly from GitHub:
 
 ```sh
-cargo add hdfour --git https://github.com/NetBr3ak/hdfour.git
+cargo add hdfour --git https://github.com/NetBr3ak/hdfour.git --tag v0.1.0
 ```
 
 If you already have a checkout, use a path dependency:

@@ -1,0 +1,18 @@
+{
+  "name": "hdfour",
+  "version": "0.1.0",
+  "description": "Read HDF4 and HDF-EOS2 files in the browser with WebAssembly.",
+  "type": "module",
+  "main": "./hdfour_wasm.js",
+  "types": "./hdfour_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./hdfour_wasm.d.ts",
+      "import": "./hdfour_wasm.js"
+    },
+    "./hdfour_wasm_bg.wasm": "./hdfour_wasm_bg.wasm"
+  },
+  "files": ["*.js", "*.wasm", "*.d.ts", "LICENSE-APACHE", "LICENSE-MIT", "NOTICE"],
+  "license": "(MIT OR Apache-2.0)",
+  "repository": "github:NetBr3ak/hdfour"
+}

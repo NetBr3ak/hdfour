@@ -5,6 +5,8 @@ Releases will use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-18
+
 ### Fixed
 
 - The repository check script runs from any working directory and keeps the
