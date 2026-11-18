@@ -36,6 +36,26 @@ jobs:
       - name: Check Python and WebAssembly
         run: sh scripts/check-bindings.sh
 
+  reference-fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rebuild the HDF4 C fixtures and compare them with Git
+        env:
+          HDFOUR_FIXTURE_STORE: ${{ runner.temp }}/hdfour-fixtures
+        run: |
+          sh fixtures/build.sh
+          git diff --exit-code -- fixtures
+
+  windows-core:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test the Windows file reader
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable test --locked -p hdfour
+
   minimum-rust:
     runs-on: ubuntu-latest
     steps:
