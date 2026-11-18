@@ -5,6 +5,11 @@ Releases will use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Unsupported SD datasets no longer prevent an HDF-EOS2 file from opening.
+  Their EOS fields remain unlinked, and the datasets appear in `skipped()`.
+
 ### Added
 
 - Rust `File::byte_len` and `File::read_into` for caller-allocated output buffers.

@@ -639,7 +639,7 @@ impl Catalog<'_, '_> {
     fn field_links<'a>(
         &mut self,
         reference: u16,
-        datasets: &HashMap<u16, (usize, &'a Dataset)>,
+        datasets: &HashMap<u16, Option<(usize, &'a Dataset)>>,
     ) -> Result<FieldLinks<'a>> {
         let mut links = FieldLinks {
             datasets: HashMap::new(),
@@ -647,9 +647,13 @@ impl Catalog<'_, '_> {
         };
         for (tag, reference) in self.members(reference)? {
             if tag == 720 {
-                let &(index, dataset) = datasets
+                let Some(&(index, dataset)) = datasets
                     .get(&reference)
-                    .ok_or_else(|| malformed("EOS NDG has no dataset"))?;
+                    .ok_or_else(|| malformed("EOS NDG has no dataset"))?
+                    .as_ref()
+                else {
+                    continue;
+                };
                 if !links.datasets.contains_key(dataset.name.as_str()) {
                     self.reader
                         .index
@@ -704,7 +708,7 @@ struct EosLinks<'a> {
     groups: HashMap<String, HashMap<String, u16>>,
     field_groups: HashMap<u16, Vec<u16>>,
     fields: HashMap<u16, FieldLinks<'a>>,
-    datasets: HashMap<u16, (usize, &'a Dataset)>,
+    datasets: HashMap<u16, Option<(usize, &'a Dataset)>>,
 }
 
 impl<'a> EosLinks<'a> {
@@ -748,12 +752,35 @@ impl<'a> EosLinks<'a> {
                 field_groups.insert(reference, children);
             }
         }
-        budget.items::<(u16, (usize, &Dataset))>(datasets.len())?;
+        budget.items::<(u16, Option<(usize, &Dataset)>)>(datasets.len())?;
         let mut by_reference = HashMap::new();
         for (index, dataset) in datasets.iter().enumerate() {
             by_reference
                 .entry(dataset.ndg_ref)
-                .or_insert((index, dataset));
+                .or_insert(Some((index, dataset)));
+        }
+        // Root variables missing from the dataset list were explicitly skipped during
+        // SD parsing. Keep their EOS fields unlinked instead of rejecting the whole file.
+        let root = groups.values().find(|group| group.class == "CDF0.0");
+        for (_, reference) in root
+            .into_iter()
+            .flat_map(|group| &group.members)
+            .filter(|(tag, _)| *tag == 1965)
+        {
+            let Some(group) = groups
+                .get(reference)
+                .filter(|group| group.class == "Var0.0")
+            else {
+                continue;
+            };
+            let Some((_, reference)) = group.members.iter().find(|(tag, _)| *tag == 720) else {
+                continue;
+            };
+            if let std::collections::hash_map::Entry::Vacant(entry) = by_reference.entry(*reference)
+            {
+                budget.items::<(u16, Option<(usize, &Dataset)>)>(1)?;
+                entry.insert(None);
+            }
         }
         Ok(Self {
             groups: indexed,
