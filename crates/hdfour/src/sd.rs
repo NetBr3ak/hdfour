@@ -85,6 +85,7 @@ pub(crate) fn parse(reader: &Reader<'_>) -> Result<Metadata> {
     };
     let members = catalog.members(root)?;
     let mut datasets = Vec::new();
+    let mut skipped_ndgs = Vec::new();
     let mut dimension_sizes = BTreeMap::new();
     for &(tag, reference) in &members {
         if tag != 1965 || catalog.group(reference)?.class != "Var0.0" {
@@ -100,13 +101,23 @@ pub(crate) fn parse(reader: &Reader<'_>) -> Result<Metadata> {
             Err(Error::Unsupported {
                 feature: "number-type" | "ragged-array" | "vdata-interlace",
                 ..
-            }) => {}
+            }) => {
+                if let Some((_, reference)) = catalog
+                    .group(reference)?
+                    .members
+                    .iter()
+                    .find(|(tag, _)| *tag == 720)
+                {
+                    reader.index.parser_metadata().items::<u16>(1)?;
+                    skipped_ndgs.push(*reference);
+                }
+            }
             Err(error) => return Err(error),
         }
     }
     let attributes = catalog.attributes(root, reader.index.metadata())?;
     catalog.dimension_attributes(&mut datasets)?;
-    let eos = catalog.eos(&attributes, &datasets)?;
+    let eos = catalog.eos_with_skipped(&attributes, &datasets, &skipped_ndgs)?;
     Ok(Metadata {
         datasets,
         attributes,
@@ -513,7 +524,17 @@ impl Catalog<'_, '_> {
         })
     }
 
+    #[cfg(test)]
     fn eos(&mut self, attributes: &[Attribute], datasets: &[Dataset]) -> Result<Option<Eos>> {
+        self.eos_with_skipped(attributes, datasets, &[])
+    }
+
+    fn eos_with_skipped(
+        &mut self,
+        attributes: &[Attribute],
+        datasets: &[Dataset],
+        skipped_ndgs: &[u16],
+    ) -> Result<Option<Eos>> {
         let mut parts = BTreeMap::new();
         for attribute in attributes {
             let Some(suffix) = attribute.name.strip_prefix("StructMetadata.") else {
@@ -555,6 +576,14 @@ impl Catalog<'_, '_> {
         let (mut eos, skipped) = eos::from_document(&document, self.reader.limits(), &staged)?;
         let scratch = Budget::new(self.reader.limits().max_metadata_bytes);
         let mut links = EosLinks::new(&self.groups, datasets, &scratch)?;
+        for reference in skipped_ndgs {
+            if let std::collections::hash_map::Entry::Vacant(entry) =
+                links.datasets.entry(*reference)
+            {
+                scratch.items::<(u16, Option<(usize, &Dataset)>)>(1)?;
+                entry.insert(None);
+            }
+        }
         for (objects, class) in [(&mut eos.grids, "GRID"), (&mut eos.swaths, "SWATH")] {
             for object in objects {
                 self.link_indexed_fields(object, &mut links, class)?;
@@ -758,29 +787,6 @@ impl<'a> EosLinks<'a> {
             by_reference
                 .entry(dataset.ndg_ref)
                 .or_insert(Some((index, dataset)));
-        }
-        // Root variables missing from the dataset list were explicitly skipped during
-        // SD parsing. Keep their EOS fields unlinked instead of rejecting the whole file.
-        let root = groups.values().find(|group| group.class == "CDF0.0");
-        for (_, reference) in root
-            .into_iter()
-            .flat_map(|group| &group.members)
-            .filter(|(tag, _)| *tag == 1965)
-        {
-            let Some(group) = groups
-                .get(reference)
-                .filter(|group| group.class == "Var0.0")
-            else {
-                continue;
-            };
-            let Some((_, reference)) = group.members.iter().find(|(tag, _)| *tag == 720) else {
-                continue;
-            };
-            if let std::collections::hash_map::Entry::Vacant(entry) = by_reference.entry(*reference)
-            {
-                budget.items::<(u16, Option<(usize, &Dataset)>)>(1)?;
-                entry.insert(None);
-            }
         }
         Ok(Self {
             groups: indexed,
