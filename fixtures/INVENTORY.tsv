@@ -18,8 +18,8 @@ fixtures/F06.hdf	binary	3402
 fixtures/F07.hdf	binary	7402
 fixtures/F08.hdf	binary	7613
 fixtures/F09.hdf	binary	2968
-fixtures/F10.hdf	binary	2958
-fixtures/F11.hdf	binary	2946
+fixtures/F10.hdf	binary	2964
+fixtures/F11.hdf	binary	2947
 fixtures/F12.hdf	binary	2912
 fixtures/F12.raw	binary	30
 fixtures/F13.hdf	binary	6811
@@ -33,11 +33,11 @@ fixtures/F20.hdf	binary	2982
 fixtures/F21.hdf	binary	2918
 fixtures/README.md	181	9838
 fixtures/SHA256SUMS	153	13982
-fixtures/build.sh	36	1955
-fixtures/c/gen.c	388	14572
+fixtures/build.sh	37	2033
+fixtures/c/gen.c	395	14955
 fixtures/c/sdsdump.c	126	4620
 fixtures/conda-lock.txt	44	6216
-fixtures/dump.py	306	10206
+fixtures/dump.py	310	10293
 fixtures/expect.json	101	5162
 fixtures/golden/F01.json	321	5745
 fixtures/golden/F01/0.bin	binary	15
@@ -93,7 +93,7 @@ fixtures/golden/F10.json	42	778
 fixtures/golden/F10/0.bin	binary	60
 fixtures/golden/F10/status.json	3	46
 fixtures/golden/F11.json	42	760
-fixtures/golden/F11/0.bin	binary	30
+fixtures/golden/F11/0.bin	binary	32
 fixtures/golden/F11/status.json	3	46
 fixtures/golden/F12.json	42	776
 fixtures/golden/F12/0.bin	binary	30
@@ -167,4 +167,11 @@ fixtures/golden/R02/9.bin	binary	18
 fixtures/golden/R02/status.json	26	1051
 fixtures/golden/R03.json	42	773
 fixtures/golden/R03/status.json	3	49
+fixtures/odl/README.md	30	2306
+fixtures/odl/grid.odl	38	992
+fixtures/odl/point.odl	22	507
+fixtures/odl/swath.odl	68	1881
+fixtures/odl/too-deep.odl	134	2250
 fixtures/test_fixtures.py	180	7496
+fixtures/window-reference.json	250	39298
+fixtures/window_reference.py	212	7673

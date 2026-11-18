@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-store="$HOME/.local/share/hdfour-fixtures"
+store=${HDFOUR_FIXTURE_STORE:-"$HOME/.local/share/hdfour-fixtures"}
 manager="$store/micromamba"
 prefix="$store/env"
 export MAMBA_ROOT_PREFIX="$store/mamba"

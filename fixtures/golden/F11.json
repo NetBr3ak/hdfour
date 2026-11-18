@@ -1,6 +1,6 @@
 {
   "file": "F11.hdf",
-  "sha256": "a7eb067e883dff311edf1a8197195adf5db397dad51dbf1a4efc80e913f48696",
+  "sha256": "40e65796b75f09090f3fb76d4d2bb4542da2d5855599a6171543b80c9a23d8df",
   "attributes": [],
   "datasets": [
     {
@@ -8,19 +8,19 @@
       "name": "nbit",
       "dtype": 22,
       "shape": [
-        3,
-        5
+        4,
+        4
       ],
       "dimensions": [
         {
           "name": "fakeDim0",
-          "size": 3,
+          "size": 4,
           "unlimited": false,
           "attributes": []
         },
         {
           "name": "fakeDim1",
-          "size": 5,
+          "size": 4,
           "unlimited": false,
           "attributes": []
         }
@@ -36,7 +36,7 @@
     {
       "index": 0,
       "read": "ok",
-      "bytes": 30
+      "bytes": 32
     }
   ]
 }

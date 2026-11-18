@@ -286,7 +286,11 @@ def main() -> None:
         help="also check cached R01 and R04; keep their goldens in the cache",
     )
     args = parser.parse_args()
-    python = Path.home() / ".local/share/hdfour-fixtures/env/bin/python"
+    store = Path(
+        os.getenv("HDFOUR_FIXTURE_STORE")
+        or Path.home() / ".local/share/hdfour-fixtures"
+    )
+    python = store / "env/bin/python"
     if not python.exists():
         raise SystemExit(
             "Run sh fixtures/build.sh to create the reference environment."

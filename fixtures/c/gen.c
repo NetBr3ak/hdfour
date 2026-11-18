@@ -133,7 +133,8 @@ static void compressed_fixture(int32 file, comp_coder_t codec) {
     comp_info info;
     memset(&info, 0, sizeof(info));
     if (codec == COMP_CODE_DEFLATE) info.deflate.level = 6;
-    if (codec == COMP_CODE_SKPHUFF) info.skphuff.skp_size = 4;
+    /* This pattern takes 392 bits with skip 2; no final padding bits are left unwritten. */
+    if (codec == COMP_CODE_SKPHUFF) info.skphuff.skp_size = 2;
     CHECK(SDsetcompress(dataset, codec, &info));
     write2(dataset, DFNT_INT32);
     CHECK(SDendaccess(dataset));
@@ -326,9 +327,15 @@ static void generate(int fixture) {
         case 9: compressed_fixture(file, COMP_CODE_RLE); break;
         case 10: compressed_fixture(file, COMP_CODE_SKPHUFF); break;
         case 11: {
-            int32 dataset = create2(file, "nbit", DFNT_INT16);
+            /* Sixteen 15-bit samples end on a byte boundary in the C writer. */
+            int32 shape[] = {4, 4};
+            int32 start[] = {0, 0};
+            Values values;
+            int32 dataset = SDcreate(file, "nbit", DFNT_INT16, 2, shape);
+            CHECK(dataset);
             CHECK(SDsetnbitdataset(dataset, 14, 15, 1, 0));
-            write2(dataset, DFNT_INT16);
+            pattern(&values, DFNT_INT16);
+            CHECK(SDwritedata(dataset, start, NULL, shape, &values));
             CHECK(SDendaccess(dataset));
             break;
         }
