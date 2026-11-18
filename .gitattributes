@@ -1,0 +1,5 @@
+# Keep reference inputs and golden output identical across checkouts.
+fixtures/** text=auto eol=lf
+*.hdf binary
+*.raw binary
+*.bin binary
