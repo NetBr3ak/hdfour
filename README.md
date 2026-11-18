@@ -41,7 +41,7 @@ maturin develop
 ### WebAssembly
 
 You need the `wasm32-unknown-unknown` Rust target and
-`wasm-bindgen-cli` 0.2.129. From the repository root:
+`wasm-bindgen-cli` 0.2.130. From the repository root:
 
 ```sh
 sh demo/build.sh
@@ -230,7 +230,7 @@ a locked environment. See [fixtures/README.md](fixtures/README.md) and
 
 Other tests:
 
-- Python: `pip install pytest==9.0.2 pyhdf==0.11.7`, then
+- Python: `pip install pytest==9.2.0 pyhdf==0.11.7`, then
   `maturin develop && pytest -q python/tests`. This includes a comparison with
   pyhdf.
 - WebAssembly: `node demo/smoke.mjs` after `sh demo/build.sh`.

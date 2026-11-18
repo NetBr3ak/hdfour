@@ -14,7 +14,7 @@ test('a failing gzip makes the demo build fail', async () => {
     await writeFile(join(root, 'demo/pkg/hdfour_wasm_bg.wasm'), 'module');
     for (const [name, script] of Object.entries({
       cargo: 'exit 0', gzip: 'exit 17',
-      'wasm-bindgen': 'if [ "$1" = --version ]; then echo "wasm-bindgen 0.2.129"; fi',
+      'wasm-bindgen': 'if [ "$1" = --version ]; then echo "wasm-bindgen 0.2.130"; fi',
     })) await writeFile(join(root, 'bin', name), `#!/bin/sh\n${script}\n`, { mode: 0o755 });
     const result = spawnSync('sh', ['demo/build.sh'], { cwd: root, env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}` } });
     assert.equal(result.status, 17, result.stderr.toString());

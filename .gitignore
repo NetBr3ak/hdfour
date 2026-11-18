@@ -6,3 +6,8 @@ __pycache__/
 corpus/cache/
 demo/pkg/
 .DS_Store
+
+# Native extensions from maturin develop and local test reports.
+/python/hdfour/*.so
+/python/hdfour/*.pyd
+/test-results/

@@ -37,7 +37,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at the repository's private vulnerability and conduct reporting. All complaints will be reviewed and investigated promptly and fairly.
+To report abusive, harassing, or otherwise unacceptable behavior, open an issue asking the maintainer to arrange a private reporting channel. Do not name people or include incident details in that issue. Share the report only through the agreed private channel. All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

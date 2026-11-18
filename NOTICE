@@ -3,8 +3,9 @@ hdfour
 Project code is licensed under MIT OR Apache-2.0.
 
 The HDF4 layout references retain the upstream notice below.
-It also applies to the planned upstream fixtures litend.dat (R02) and
-sds_szipped.dat (R03), which are not included in this foundation batch.
+It also applies to the committed upstream fixtures litend.dat (corpus/R02.hdf)
+and sds_szipped.dat (corpus/R03.hdf). Their provenance and hashes are recorded
+in corpus/manifest.json, with a second copy of these terms in corpus/COPYING.
 
 Source: https://raw.githubusercontent.com/HDFGroup/hdf4/master/COPYING
 The following HDF4 COPYING text is reproduced verbatim.

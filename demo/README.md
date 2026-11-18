@@ -1,7 +1,7 @@
 # Browser inspector
 
 Build from the repository root with `sh demo/build.sh`. This requires the
-`wasm32-unknown-unknown` Rust target and `wasm-bindgen-cli` 0.2.129.
+`wasm32-unknown-unknown` Rust target and `wasm-bindgen-cli` 0.2.130.
 The build prints the generated module's raw and gzip byte counts, in that order.
 Run `node demo/smoke.mjs` to compare the binding with the committed C golden files.
 With Playwright and axe-core available in Node's module path, run

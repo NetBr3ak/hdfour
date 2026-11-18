@@ -7,10 +7,16 @@ Releases will use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The repository check script runs from any working directory and keeps the
+  Cargo lockfile unchanged.
+
 - Unsupported SD datasets no longer prevent an HDF-EOS2 file from opening.
   Their EOS fields remain unlinked, and the datasets appear in `skipped()`.
 
 ### Added
+
+- Linux and macOS CI for core checks, Python wheel tests and WebAssembly tests.
+- A binding check script and pinned Python development tools.
 
 - Rust `File::byte_len` and `File::read_into` for caller-allocated output buffers.
 - Rust core: `open`, `File::from_bytes` and `File::from_source` read all metadata;
@@ -35,6 +41,5 @@ Releases will use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `demo/`.
 - Fixtures F01 to F21 written through the HDF4 C library, with golden files;
   corpus files R02 and R03 from the HDF4 test suite.
-- Golden, property, Python, WebAssembly and fuzz tests; a benchmark harness with
-  no results yet.
+- Golden, property, Python, WebAssembly and fuzz tests; a benchmark harness.
 - Contribution guidance, reporting policies and licences.

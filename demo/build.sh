@@ -2,8 +2,8 @@
 set -eu
 
 cd "$(dirname "$0")/.."
-if [ "$(wasm-bindgen --version)" != 'wasm-bindgen 0.2.129' ]; then
-    echo 'demo/build.sh requires wasm-bindgen-cli 0.2.129.' >&2
+if [ "$(wasm-bindgen --version)" != 'wasm-bindgen 0.2.130' ]; then
+    echo 'demo/build.sh requires wasm-bindgen-cli 0.2.130.' >&2
     exit 1
 fi
 cargo build -p hdfour-wasm --release --target wasm32-unknown-unknown

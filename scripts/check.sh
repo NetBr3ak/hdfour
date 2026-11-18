@@ -1,10 +1,11 @@
 #!/bin/sh
 set -eu
+cd "$(dirname "$0")/.."
 
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace --exclude hdfour-py
-RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace --exclude hdfour-py
+RUSTDOCFLAGS=-Dwarnings cargo doc --locked --workspace --no-deps
 ruff check
 ruff format --check
 
