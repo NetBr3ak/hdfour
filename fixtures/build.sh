@@ -30,6 +30,7 @@ done
 "$prefix/bin/hdp" dumpsds -h fixtures/F05.hdf > fixtures/F05-hdp.txt
 "$prefix/bin/python" -I fixtures/dump.py
 "$prefix/bin/python" -I fixtures/dump.py --check
+"$prefix/bin/python" -I fixtures/window_reference.py
 "$prefix/bin/python" -I fixtures/test_fixtures.py
 find fixtures corpus -type f \( -name 'F??.hdf' -o -name 'F12.raw' -o -name 'F05-hdp.txt' -o -path 'fixtures/golden/*' -o -path 'corpus/R0[23].hdf' \) -print \
     | LC_ALL=C sort | xargs sha256sum > fixtures/SHA256SUMS

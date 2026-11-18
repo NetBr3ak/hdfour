@@ -24,6 +24,10 @@ pub enum Error {
         value: u64,
         max: u64,
     },
+    /// The requested rectangle does not fit the dataset.
+    InvalidSelection {
+        reason: &'static str,
+    },
     NotFound(String),
     Ambiguous {
         name: String,
@@ -49,6 +53,7 @@ impl fmt::Display for Error {
             Self::LimitExceeded { limit, value, max } => {
                 write!(formatter, "{limit} limit exceeded: {value} > {max}")
             }
+            Self::InvalidSelection { reason } => write!(formatter, "invalid selection: {reason}"),
             Self::NotFound(name) => write!(formatter, "dataset not found: {name}"),
             Self::Ambiguous { name, count } => {
                 write!(formatter, "ambiguous dataset {name}: {count} matches")

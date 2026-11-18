@@ -10,6 +10,7 @@
 
 use crate::dd::{self, Descriptor, Index};
 use crate::special::{self, Special};
+use crate::window::Window;
 use crate::{
     Array, Attribute, ByteOrder, Codec, DType, Dataset, Eos, Error, Limits, Memory, Result,
     Skipped, Source, Storage, Value, chunk, codec, element, nt, sd,
@@ -79,22 +80,35 @@ impl File {
     /// Read a whole C-order array, without applying calibration or masking fill values.
     /// The dataset must be borrowed from this file; cloned or foreign metadata is rejected.
     pub fn read(&self, dataset: &Dataset) -> Result<Array> {
-        let (reader, count) = self.prepare_read(dataset)?;
-        let data = match dataset.dtype {
-            DType::Char8 => Value::Char8(reader.values::<u8>(dataset, count)?),
-            DType::UChar8 => Value::UChar8(reader.values::<u8>(dataset, count)?),
-            DType::I8 => Value::I8(reader.values::<i8>(dataset, count)?),
-            DType::U8 => Value::U8(reader.values::<u8>(dataset, count)?),
-            DType::I16 => Value::I16(reader.values::<i16>(dataset, count)?),
-            DType::U16 => Value::U16(reader.values::<u16>(dataset, count)?),
-            DType::I32 => Value::I32(reader.values::<i32>(dataset, count)?),
-            DType::U32 => Value::U32(reader.values::<u32>(dataset, count)?),
-            DType::F32 => Value::F32(reader.values::<f32>(dataset, count)?),
-            DType::F64 => Value::F64(reader.values::<f64>(dataset, count)?),
-        };
-        Ok(Array {
-            shape: dataset.shape.clone(),
-            data,
+        let (reader, plan) = self.prepare_read(dataset)?;
+        read_values(dataset.dtype, &dataset.shape, plan.bytes, |out| {
+            reader.read_native(dataset, &plan.storage, out)
+        })
+    }
+
+    /// Read a rectangular region as raw, native-endian values in C order.
+    /// `start` is zero-based and `count` is the number of values along each axis.
+    /// Both must match the dataset rank. A zero count returns an empty array.
+    /// Plain arrays use positional reads; chunked arrays decode only overlapping chunks.
+    /// Linked storage and standalone compression may require reading the full array.
+    pub fn read_window(&self, dataset: &Dataset, start: &[u64], count: &[u64]) -> Result<Array> {
+        let reader = self.reader_for(dataset)?;
+        let window = Window::new(&dataset.shape, start, count)?;
+        if count == dataset.shape {
+            return self.read(dataset);
+        }
+        let plan = reader
+            .read_plan(dataset, Some(&window))
+            .map_err(|error| named(error, dataset))?;
+        let bytes = array_bytes(count, dataset.dtype.size(), reader.limits())?;
+        read_values(dataset.dtype, count, bytes, |output| {
+            if !output.is_empty() {
+                reader
+                    .read_region(dataset, &window, &plan, output)
+                    .map_err(|error| named(error, dataset))?;
+                to_native(dataset, output);
+            }
+            Ok(())
         })
     }
 
@@ -103,7 +117,7 @@ impl File {
     /// Applies the file's [`Limits`] and returns [`Error::LimitExceeded`] when the array
     /// is larger than the limit allows.
     pub fn byte_len(&self, dataset: &Dataset) -> Result<usize> {
-        self.prepare_read(dataset).map(|(_, bytes)| bytes)
+        self.prepare_read(dataset).map(|(_, plan)| plan.bytes)
     }
 
     /// Read a whole array into an exact-length buffer in C order and native byte order.
@@ -111,29 +125,36 @@ impl File {
     /// from this file; cloned or foreign metadata is rejected.
     /// On error, the contents of `output` are unspecified.
     pub fn read_into(&self, dataset: &Dataset, output: &mut [u8]) -> Result<()> {
-        let (reader, expected) = self.prepare_read(dataset)?;
-        if output.len() != expected {
+        let (reader, plan) = self.prepare_read(dataset)?;
+        if output.len() != plan.bytes {
             return Err(Error::WrongLength {
-                expected,
+                expected: plan.bytes,
                 actual: output.len(),
             });
         }
-        reader.read_native(dataset, output)
+        reader.read_native(dataset, &plan.storage, output)
     }
 
-    fn prepare_read(&self, dataset: &Dataset) -> Result<(Reader<'_>, usize)> {
-        if !self.datasets().iter().any(|own| std::ptr::eq(own, dataset)) {
+    fn prepare_read(&self, dataset: &Dataset) -> Result<(Reader<'_>, ReadPlan)> {
+        let reader = self.reader_for(dataset)?;
+        let plan = reader
+            .read_plan(dataset, None)
+            .map_err(|error| named(error, dataset))?;
+        Ok((reader, plan))
+    }
+
+    fn reader_for(&self, dataset: &Dataset) -> Result<Reader<'_>> {
+        if !self
+            .datasets()
+            .as_ptr_range()
+            .contains(&std::ptr::from_ref(dataset))
+        {
             return Err(Error::NotFound(dataset.name.clone()));
         }
-        let reader = Reader {
+        Ok(Reader {
             source: self.source.as_ref(),
             index: &self.index,
-        };
-        reader
-            .prepare(dataset)
-            .map_err(|error| named(error, dataset))?;
-        let bytes = array_bytes(&dataset.shape, dataset.dtype.size(), reader.limits())?;
-        Ok((reader, bytes))
+        })
     }
 }
 
@@ -309,7 +330,7 @@ impl Reader<'_> {
         }
     }
 
-    fn prepare(&self, dataset: &Dataset) -> Result<()> {
+    fn check_dataset(&self, dataset: &Dataset) -> Result<usize> {
         let bytes = array_bytes(&dataset.shape, dataset.dtype.size(), self.limits())?;
         if dataset.storage == Storage::External {
             return Err(unsupported("external-element", dataset));
@@ -324,49 +345,58 @@ impl Reader<'_> {
                 return Err(unsupported("fill-type-mismatch", dataset));
             }
         }
+        Ok(bytes)
+    }
+
+    #[cfg(test)]
+    fn prepare(&self, dataset: &Dataset) -> Result<()> {
+        self.read_plan(dataset, None).map(drop)
+    }
+
+    fn read_plan(&self, dataset: &Dataset, selection: Option<&Window<'_>>) -> Result<ReadPlan> {
+        let bytes = self.check_dataset(dataset)?;
+        let storage = self.plan_storage(dataset, bytes, selection)?;
+        Ok(ReadPlan { bytes, storage })
+    }
+
+    fn plan_storage(
+        &self,
+        dataset: &Dataset,
+        bytes: usize,
+        selection: Option<&Window<'_>>,
+    ) -> Result<ReadStorage> {
         let Some(key) = dataset.data else {
-            return Ok(());
+            return Ok(ReadStorage::Fill);
         };
         let descriptor = self.descriptor(key)?;
-        if descriptor.offset.is_none() {
-            return Ok(());
-        }
+        let Some(offset) = descriptor.offset else {
+            return Ok(ReadStorage::Fill);
+        };
         if !descriptor.is_special() {
             if descriptor.length < bytes as u64 {
                 return Err(malformed("element shorter than array"));
             }
-            return Ok(());
+            return Ok(ReadStorage::Plain { key, offset });
         }
         match self.special(descriptor)? {
+            Special::Compressed(header) if header.length == 0 => Ok(ReadStorage::Fill),
             Special::Compressed(header) => {
-                if header.length == 0 {
-                    return Ok(());
-                }
                 if header.length != bytes as u64 {
                     return Err(malformed("compressed length differs from array"));
                 }
                 self.check_compressed(&header)?;
+                Ok(ReadStorage::Compressed(header))
             }
             Special::Chunked(header) => {
-                if header
-                    .dimensions
-                    .iter()
-                    .map(|dimension| dimension.length)
-                    .ne(dataset.shape.iter().copied())
-                    || u64::from(header.number_type_size) != dataset.dtype.size() as u64
-                {
-                    return Err(malformed("chunk geometry differs from dataset"));
-                }
-                chunk::prepare(self, &header)?;
+                chunk::validate_dataset(self, &header, dataset)?;
+                chunk::prepare(self, header, selection).map(ReadStorage::Chunked)
             }
-            Special::Linked(header) => {
-                if header.length < bytes as u64 {
-                    return Err(malformed("linked element shorter than array"));
-                }
+            Special::Linked(header) if header.length >= bytes as u64 => {
+                Ok(ReadStorage::Linked(key))
             }
-            Special::External => {}
+            Special::Linked(_) => Err(malformed("linked element shorter than array")),
+            Special::External => Err(unsupported("external-element", dataset)),
         }
-        Ok(())
     }
 
     fn check_compressed(&self, header: &special::Compressed) -> Result<&Descriptor> {
@@ -383,106 +413,184 @@ impl Reader<'_> {
         Ok(descriptor)
     }
 
-    fn compressed_input(&self, header: &special::Compressed) -> Result<Vec<u8>> {
-        self.bytes(self.check_compressed(header)?)
-    }
-
-    fn values<T: bytemuck::Pod + Default>(
+    fn read_native(
         &self,
         dataset: &Dataset,
-        bytes: usize,
-    ) -> Result<Vec<T>> {
-        let count = bytes
-            .checked_div(std::mem::size_of::<T>())
-            .ok_or_else(|| malformed("zero value width"))?;
-        let mut values = buffer::<T>(count)?;
-        let output = bytemuck::must_cast_slice_mut::<T, u8>(&mut values);
-        self.read_native(dataset, output)?;
-        Ok(values)
-    }
-
-    fn read_native(&self, dataset: &Dataset, output: &mut [u8]) -> Result<()> {
-        self.read_array(dataset, output)
+        storage: &ReadStorage,
+        output: &mut [u8],
+    ) -> Result<()> {
+        self.read_storage(dataset, storage, output)
             .map_err(|error| named(error, dataset))?;
-        let native = if cfg!(target_endian = "little") {
-            ByteOrder::Little
-        } else {
-            ByteOrder::Big
-        };
-        if dataset.order != native {
-            nt::swap_in_place(output, dataset.dtype.size());
-        }
+        to_native(dataset, output);
         Ok(())
     }
 
-    fn read_array(&self, dataset: &Dataset, output: &mut [u8]) -> Result<()> {
-        let Some(key) = dataset.data else {
-            return fill_array(dataset, output);
-        };
-        let descriptor = self.descriptor(key)?;
-        if descriptor.offset.is_none() {
-            return fill_array(dataset, output);
-        }
-        if !descriptor.is_special() {
-            return element::read(self.source, self.index, descriptor, output);
-        }
-        match self.special(descriptor)? {
-            Special::Linked(_) => element::read(self.source, self.index, descriptor, output),
-            Special::External => Err(unsupported("external-element", dataset)),
-            Special::Compressed(header) => {
-                if header.length == 0 {
-                    return fill_array(dataset, output);
-                }
-                if header.length != output.len() as u64 {
-                    return Err(malformed("compressed length differs from array"));
-                }
-                codec::decode(
-                    &header.compression.codec,
-                    &self.compressed_input(&header)?,
-                    output,
-                )
+    fn read_region(
+        &self,
+        dataset: &Dataset,
+        window: &Window<'_>,
+        plan: &ReadPlan,
+        output: &mut [u8],
+    ) -> Result<()> {
+        let width = dataset.dtype.size();
+        match &plan.storage {
+            ReadStorage::Fill => fill_array(dataset, output),
+            ReadStorage::Plain { offset: base, .. } => {
+                window.read_runs(width, output, |offset, row| {
+                    let physical = base
+                        .checked_add(offset)
+                        .ok_or_else(|| malformed("window offset overflow"))?;
+                    dd::read_at(self.source, physical, row)
+                })
             }
-            Special::Chunked(header) => chunk::read(self, &header, dataset, output),
+            ReadStorage::Chunked(prepared) => chunk::read_window(self, prepared, window, output),
+            storage => {
+                let mut raw = buffer(plan.bytes)?;
+                self.read_storage(dataset, storage, &mut raw)?;
+                window.read_runs(width, output, |offset, row| {
+                    let start = allocation_size(offset)?;
+                    let data = raw
+                        .get(start..)
+                        .and_then(|tail| tail.get(..row.len()))
+                        .ok_or_else(|| malformed("window outside decoded array"))?;
+                    row.copy_from_slice(data);
+                    Ok(())
+                })
+            }
         }
     }
 
-    pub fn read_chunk(&self, key: (u16, u16), output: &mut [u8]) -> Result<()> {
-        let descriptor = self.descriptor(key)?;
-        if !descriptor.is_special() {
-            return element::read(self.source, self.index, descriptor, output);
-        }
-        match self.special(descriptor)? {
-            Special::Linked(_) => element::read(self.source, self.index, descriptor, output),
-            Special::Compressed(header) => {
-                if header.length != output.len() as u64 {
-                    return Err(malformed("compressed chunk size mismatch"));
-                }
-                codec::decode(
-                    &header.compression.codec,
-                    &self.compressed_input(&header)?,
-                    output,
-                )
+    fn read_storage(
+        &self,
+        dataset: &Dataset,
+        storage: &ReadStorage,
+        output: &mut [u8],
+    ) -> Result<()> {
+        match storage {
+            ReadStorage::Fill => fill_array(dataset, output),
+            ReadStorage::Plain { key, .. } | ReadStorage::Linked(key) => {
+                element::read(self.source, self.index, self.descriptor(*key)?, output)
             }
-            Special::External => Err(Error::Unsupported {
-                feature: "external-element",
-                object: "chunk".into(),
-            }),
-            Special::Chunked(_) => Err(malformed("nested chunk storage")),
+            ReadStorage::Compressed(header) => {
+                self.decode_prepared(header.reference, header.compression.codec, output)
+            }
+            ReadStorage::Chunked(prepared) => chunk::read(self, prepared, dataset, output),
         }
     }
 
-    pub fn prepare_chunk(&self, key: (u16, u16), length: usize) -> Result<()> {
+    fn decode_prepared(&self, reference: u16, codec: Codec, output: &mut [u8]) -> Result<()> {
+        let bytes = self.bytes(self.descriptor((40, reference))?)?;
+        codec::decode(&codec, &bytes, output)
+    }
+
+    pub(crate) fn chunk_storage(&self, key: (u16, u16), length: usize) -> Result<ChunkStorage> {
         let descriptor = self.descriptor(key)?;
-        if descriptor.is_special() {
-            if let Special::Compressed(header) = self.special(descriptor)? {
+        if !descriptor.is_special() {
+            return Ok(ChunkStorage::Element(key));
+        }
+        match self.special(descriptor)? {
+            Special::Compressed(header) => {
                 if header.length != length as u64 {
                     return Err(malformed("compressed chunk size mismatch"));
                 }
                 self.check_compressed(&header)?;
+                Ok(ChunkStorage::Compressed {
+                    reference: header.reference,
+                    codec: header.compression.codec,
+                })
             }
+            Special::Linked(_) => Ok(ChunkStorage::Element(key)),
+            Special::External => Ok(ChunkStorage::External),
+            Special::Chunked(_) => Ok(ChunkStorage::Nested),
         }
-        Ok(())
     }
+
+    pub(crate) fn read_prepared_chunk(
+        &self,
+        storage: &ChunkStorage,
+        output: &mut [u8],
+    ) -> Result<()> {
+        match storage {
+            ChunkStorage::Fill => Ok(()),
+            ChunkStorage::Element(key) => {
+                element::read(self.source, self.index, self.descriptor(*key)?, output)
+            }
+            ChunkStorage::Compressed { reference, codec } => {
+                self.decode_prepared(*reference, *codec, output)
+            }
+            ChunkStorage::External => Err(Error::Unsupported {
+                feature: "external-element",
+                object: "chunk".into(),
+            }),
+            ChunkStorage::Nested => Err(malformed("nested chunk storage")),
+        }
+    }
+}
+
+struct ReadPlan {
+    bytes: usize,
+    storage: ReadStorage,
+}
+
+enum ReadStorage {
+    Fill,
+    Plain { key: (u16, u16), offset: u64 },
+    Linked((u16, u16)),
+    Compressed(special::Compressed),
+    Chunked(chunk::Prepared),
+}
+
+pub(crate) enum ChunkStorage {
+    Fill,
+    Element((u16, u16)),
+    Compressed { reference: u16, codec: Codec },
+    External,
+    Nested,
+}
+
+fn to_native(dataset: &Dataset, output: &mut [u8]) {
+    let native = if cfg!(target_endian = "little") {
+        ByteOrder::Little
+    } else {
+        ByteOrder::Big
+    };
+    if dataset.order != native {
+        nt::swap_in_place(output, dataset.dtype.size());
+    }
+}
+
+fn read_values(
+    dtype: DType,
+    shape: &[u64],
+    bytes: usize,
+    read: impl FnOnce(&mut [u8]) -> Result<()>,
+) -> Result<Array> {
+    let count = bytes
+        .checked_div(dtype.size())
+        .ok_or_else(|| malformed("zero value width"))?;
+    macro_rules! values {
+        ($variant:ident, $ty:ty) => {{
+            let mut values = buffer::<$ty>(count)?;
+            read(bytemuck::must_cast_slice_mut::<$ty, u8>(&mut values))?;
+            Value::$variant(values)
+        }};
+    }
+    let data = match dtype {
+        DType::Char8 => values!(Char8, u8),
+        DType::UChar8 => values!(UChar8, u8),
+        DType::I8 => values!(I8, i8),
+        DType::U8 => values!(U8, u8),
+        DType::I16 => values!(I16, i16),
+        DType::U16 => values!(U16, u16),
+        DType::I32 => values!(I32, i32),
+        DType::U32 => values!(U32, u32),
+        DType::F32 => values!(F32, f32),
+        DType::F64 => values!(F64, f64),
+    };
+    Ok(Array {
+        shape: shape.to_vec(),
+        data,
+    })
 }
 
 pub(crate) fn array_bytes(shape: &[u64], width: usize, limits: &Limits) -> Result<usize> {
@@ -584,9 +692,7 @@ fn fill_array(dataset: &Dataset, output: &mut [u8]) -> Result<()> {
     if bytes.len() != dataset.dtype.size() {
         return Err(malformed("empty or invalid fill value"));
     }
-    for value in output.chunks_exact_mut(bytes.len()) {
-        value.copy_from_slice(&bytes);
-    }
+    chunk::fill(output, &bytes);
     Ok(())
 }
 

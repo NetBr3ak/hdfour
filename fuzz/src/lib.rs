@@ -26,6 +26,15 @@ pub fn open_read_all(bytes: &[u8]) -> Result<usize> {
     let file = open(bytes)?;
     for dataset in file.datasets() {
         let _ = std::hint::black_box(read(&file, dataset));
+        // A bounded interior tile also exercises positional reads and partial edge chunks.
+        let start: Vec<_> = dataset.shape.iter().map(|size| size / 2).collect();
+        let count: Vec<_> = dataset
+            .shape
+            .iter()
+            .zip(&start)
+            .map(|(size, begin)| (size - begin).min(3))
+            .collect();
+        let _ = std::hint::black_box(file.read_window(dataset, &start, &count));
     }
     Ok(file.datasets().len())
 }

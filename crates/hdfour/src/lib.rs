@@ -19,6 +19,7 @@ pub mod source;
 pub mod special;
 pub mod types;
 pub mod vset;
+mod window;
 
 pub use error::{Error, Result};
 pub use limits::Limits;

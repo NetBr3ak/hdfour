@@ -10,11 +10,23 @@
 
 use std::collections::BTreeMap;
 
-use crate::read::{Reader, allocation, array_bytes, buffer, malformed};
+use crate::read::{ChunkStorage, Reader, allocation, array_bytes, buffer, malformed};
 use crate::special::Chunked;
+use crate::window::Window;
 use crate::{Dataset, Result, Value, dd, vset};
 
-type Entries = BTreeMap<Vec<u64>, (u16, u16)>;
+type Entries<T = (u16, u16)> = BTreeMap<Vec<u64>, T>;
+
+pub(crate) struct Prepared {
+    header: Chunked,
+    entries: Entries<ChunkStorage>,
+    chunks: Vec<u64>,
+    bytes: usize,
+}
+
+#[path = "chunk_window.rs"]
+mod window;
+pub(crate) use window::read_prepared as read_window;
 
 pub(crate) fn validate(reader: &Reader<'_>, header: &Chunked) -> Result<u64> {
     let shape: Vec<_> = header
@@ -67,7 +79,16 @@ fn product(values: &[u64]) -> Result<u64> {
     })
 }
 
+#[cfg(test)]
 fn table(reader: &Reader<'_>, header: &Chunked) -> Result<Entries> {
+    table_entries(reader, header, |tag, reference| (tag, reference))
+}
+
+fn table_entries<T>(
+    reader: &Reader<'_>,
+    header: &Chunked,
+    entry: impl Fn(u16, u16) -> T,
+) -> Result<Entries<T>> {
     if header.table_tag != 1962 {
         return Err(malformed("chunk table must be Vdata"));
     }
@@ -136,23 +157,94 @@ fn table(reader: &Reader<'_>, header: &Chunked) -> Result<Entries> {
                 Ok(index)
             })
             .collect::<Result<Vec<_>>>()?;
-        if entries.insert(origin, (tag, reference)).is_some() {
+        if entries.insert(origin, entry(tag, reference)).is_some() {
             return Err(malformed("duplicate chunk origin"));
         }
     }
     Ok(entries)
 }
 
-pub(crate) fn prepare(reader: &Reader<'_>, header: &Chunked) -> Result<()> {
+pub(crate) fn validate_dataset(
+    reader: &Reader<'_>,
+    header: &Chunked,
+    dataset: &Dataset,
+) -> Result<()> {
     validate(reader, header)?;
-    let bytes = chunk_bytes(reader, header)?;
-    for &(tag, reference) in table(reader, header)?.values() {
-        // hchunks.c:2624-2635 fills explicit DFTAG_NULL (1) records.
-        if tag != 1 {
-            reader.prepare_chunk((tag, reference), bytes)?;
-        }
+    if header
+        .dimensions
+        .iter()
+        .map(|dimension| dimension.length)
+        .ne(dataset.shape.iter().copied())
+        || u64::from(header.number_type_size) != dataset.dtype.size() as u64
+    {
+        return Err(malformed("chunk geometry differs from dataset"));
     }
     Ok(())
+}
+
+pub(crate) fn prepare(
+    reader: &Reader<'_>,
+    header: Chunked,
+    selection: Option<&Window<'_>>,
+) -> Result<Prepared> {
+    let bytes = chunk_bytes(reader, &header)?;
+    let chunks: Vec<_> = header
+        .dimensions
+        .iter()
+        .map(|dimension| dimension.chunk_length)
+        .collect();
+    let ranges = selection
+        .map(|window| chunk_ranges(window, &chunks))
+        .transpose()?;
+    let mut entries = if selection.is_some_and(|window| window.count.contains(&0)) {
+        BTreeMap::new()
+    } else {
+        table_entries(reader, &header, |tag, reference| {
+            // hchunks.c:2624-2635 fills explicit DFTAG_NULL (1) records.
+            if tag == 1 {
+                ChunkStorage::Fill
+            } else {
+                ChunkStorage::Element((tag, reference))
+            }
+        })?
+    };
+    if let Some(ranges) = ranges {
+        entries.retain(|origin, _| {
+            origin
+                .iter()
+                .zip(&ranges)
+                .all(|(index, range)| range.contains(index))
+        });
+    }
+    for storage in entries.values_mut() {
+        if let ChunkStorage::Element(key) = storage {
+            *storage = reader.chunk_storage(*key, bytes)?;
+        }
+    }
+    Ok(Prepared {
+        header,
+        entries,
+        chunks,
+        bytes,
+    })
+}
+
+fn chunk_ranges(window: &Window<'_>, chunks: &[u64]) -> Result<Vec<std::ops::Range<u64>>> {
+    window
+        .start
+        .iter()
+        .zip(window.count)
+        .zip(chunks)
+        .map(|((&start, &count), &extent)| {
+            let first = start
+                .checked_div(extent)
+                .ok_or_else(|| malformed("zero chunk extent"))?;
+            let end = start
+                .checked_add(count)
+                .ok_or_else(|| malformed("window end overflow"))?;
+            Ok(first..end.div_ceil(extent))
+        })
+        .collect()
 }
 
 fn chunk_bytes(reader: &Reader<'_>, header: &Chunked) -> Result<usize> {
@@ -168,7 +260,7 @@ fn chunk_bytes(reader: &Reader<'_>, header: &Chunked) -> Result<usize> {
 /// One call per element costs more than the copy itself (92 million two-byte copies took 43 percent of a
 /// 184 MB chunked read). A value whose bytes are all equal becomes one fill; any other value is written once
 /// and the filled part is then doubled, so the number of copies grows with the logarithm of the length.
-fn fill(output: &mut [u8], value: &[u8]) {
+pub(crate) fn fill(output: &mut [u8], value: &[u8]) {
     let Some((&first, rest)) = value.split_first() else {
         return;
     };
@@ -196,37 +288,22 @@ fn fill(output: &mut [u8], value: &[u8]) {
 
 pub(crate) fn read(
     reader: &Reader<'_>,
-    header: &Chunked,
+    prepared: &Prepared,
     dataset: &Dataset,
     output: &mut [u8],
 ) -> Result<()> {
-    validate(reader, header)?;
-    if header
-        .dimensions
-        .iter()
-        .map(|dimension| dimension.length)
-        .ne(dataset.shape.iter().copied())
-        || u64::from(header.number_type_size) != dataset.dtype.size() as u64
-    {
-        return Err(malformed("chunk geometry differs from dataset"));
-    }
-    fill(output, &header.fill_value);
+    fill(output, &prepared.header.fill_value);
     if output.is_empty() {
         return Ok(());
     }
-    let entries = table(reader, header)?;
-    let chunks: Vec<_> = header
-        .dimensions
-        .iter()
-        .map(|dimension| dimension.chunk_length)
-        .collect();
     let assembly = Assembly {
         reader,
-        header,
-        entries: &entries,
+        header: &prepared.header,
+        entries: &prepared.entries,
+        chunk_bytes: prepared.bytes,
         geometry: Geometry {
             shape: &dataset.shape,
-            chunks: &chunks,
+            chunks: &prepared.chunks,
             width: dataset.dtype.size(),
         },
     };
@@ -245,7 +322,8 @@ struct Band<'a> {
 struct Assembly<'a, 'b> {
     reader: &'a Reader<'b>,
     header: &'a Chunked,
-    entries: &'a Entries,
+    entries: &'a Entries<ChunkStorage>,
+    chunk_bytes: usize,
     geometry: Geometry<'a>,
 }
 
@@ -326,14 +404,15 @@ impl Assembly<'_, '_> {
             .checked_div(first.chunk_length)
             .ok_or_else(|| malformed("zero first chunk extent"))?;
         let end_chunk = end.div_ceil(first.chunk_length);
-        for (origin, &(tag, reference)) in self.entries.range(vec![start_chunk]..vec![end_chunk]) {
-            if tag == 1 {
+        let mut chunk = Vec::new();
+        for (origin, storage) in self.entries.range(vec![start_chunk]..vec![end_chunk]) {
+            if matches!(storage, ChunkStorage::Fill) {
                 continue;
             }
-            let bytes = chunk_bytes(self.reader, self.header)?;
-            self.reader.prepare_chunk((tag, reference), bytes)?;
-            let mut chunk = buffer(bytes)?;
-            self.reader.read_chunk((tag, reference), &mut chunk)?;
+            if chunk.is_empty() {
+                chunk = buffer(self.chunk_bytes)?;
+            }
+            self.reader.read_prepared_chunk(storage, &mut chunk)?;
             copy_chunk(&self.geometry, origin, &chunk, &mut band)?;
         }
         Ok(())
