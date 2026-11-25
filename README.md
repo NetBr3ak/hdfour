@@ -76,6 +76,21 @@ To print all metadata of a file: `cargo run -p hdfour --example ls -- fixtures/F
 
 `File::byte_len(dataset)` validates a dataset and returns its array size in bytes.
 `File::read_into(dataset, output)` reads into an exact-length byte buffer in C order and native byte order.
+Both methods require a dataset borrowed from the same open file. A clone or a
+dataset from another file is rejected, even when its name is the same.
+
+```rust
+fn main() -> hdfour::Result<()> {
+    let file = hdfour::open("fixtures/F01.hdf")?;
+    let dataset = file.dataset("i16")?;
+    let mut bytes = vec![0; file.byte_len(dataset)?];
+    file.read_into(dataset, &mut bytes)?;
+    Ok(())
+}
+```
+
+`read_into` rejects a shorter or longer buffer. Use `byte_len` to apply the
+file's limits before allocating; the byte buffer is not a typed Rust array.
 
 Python:
 
@@ -101,6 +116,9 @@ In Rust, use `file.read_window(dataset, &[1, 1], &[2, 3])?`. In JavaScript,
 `start` counts from zero. `count` gives the number of values on each axis,
 not the end position. This matches a unit-stride read with the HDF4 C library's
 [`SDreaddata`](https://support.hdfgroup.org/releases/hdf4/documentation/HDF4_Reference_Manual.pdf#page=134).
+Both lists must have one entry per dataset axis. A selection beyond an axis is
+an error. A zero count returns an empty result, provided the other coordinates
+are in range.
 Plain arrays need only the selected bytes. Chunked arrays need the chunk table
 and the chunks that overlap the selection. Linked storage and standalone
 compressed streams may still need a full read. File limits still apply.
