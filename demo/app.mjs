@@ -118,8 +118,10 @@ async function openFile(source) {
     clearFile();
     status.textContent = `Cannot open ${source.name}: ${error.message}`;
   } finally {
-    reading = false;
-    picker.disabled = false;
+    if (current === selection) {
+      reading = false;
+      picker.disabled = false;
+    }
   }
 }
 
@@ -147,6 +149,10 @@ document.addEventListener('drop', event => {
 window.addEventListener('pagehide', () => {
   selection += 1;
   if (file || reading) status.textContent = 'No file open.';
+  if (reading) {
+    reading = false;
+    picker.disabled = false;
+  }
   clearFile();
 });
 
