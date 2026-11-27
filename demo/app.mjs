@@ -146,6 +146,7 @@ document.addEventListener('drop', event => {
 });
 window.addEventListener('pagehide', () => {
   selection += 1;
+  if (file || reading) status.textContent = 'No file open.';
   clearFile();
 });
 
